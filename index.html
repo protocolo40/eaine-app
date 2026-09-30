@@ -878,6 +878,7 @@ const SEMANA_INFO = {
 
 function App(){
   const [db,setDb] = useState(undefined); // undefined = carregando, null = indisponível
+  const [dbErrMsg,setDbErrMsg] = useState("");
   const [papel,setPapel] = useState(()=>{ try{ return localStorage.getItem("ct40_papel")||""; }catch(e){ return ""; } });
   const [tab,setTab] = useState("hoje");
   const [dia,setDia] = useState(()=>{ const d=new Date().getDay(); return d===0 ? "DOM" : DIAS[d-1]; });
@@ -885,12 +886,12 @@ function App(){
 
   useEffect(()=>{
     try{
-      if(!window.firebase){ setDb(null); return; }
+      if(!window.firebase){ setDb(null); setDbErrMsg("window.firebase não existe (scripts do CDN não carregaram)"); return; }
       const app = window.firebase.apps && window.firebase.apps.length ? window.firebase.app() : window.firebase.initializeApp(FIREBASE_CONFIG);
       const firestoreDb = window.firebase.firestore(app);
       firestoreDb.settings({ experimentalForceLongPolling: true, useFetchStreams: false, merge: true });
       setDb(firestoreDb);
-    }catch(e){ setDb(null); }
+    }catch(e){ setDb(null); setDbErrMsg((e && e.message) ? e.message : String(e)); }
   },[]);
 
   const escolherPapel = (p)=>{ setPapel(p); try{ localStorage.setItem("ct40_papel",p); }catch(e){} };
@@ -1184,6 +1185,7 @@ function App(){
       {db===null && (
         <div style={{background:"#1a1408",borderBottom:`1px solid ${T.ruleGold}`,padding:"10px 16px",fontSize:12,color:T.warn,lineHeight:1.5}}>
           Armazenamento indisponível neste carregamento — os dados desta sessão podem não estar sendo salvos. Verifica sua internet e recarrega a página.
+          {dbErrMsg ? <div style={{marginTop:6,fontFamily:"monospace",fontSize:11,opacity:0.85}}>DETALHE: {dbErrMsg}</div> : null}
         </div>
       )}
 
