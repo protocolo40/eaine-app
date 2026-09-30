@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>CT40 · Elaine</title>
+<meta name="theme-color" content="#050505"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔥</text></svg>"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.13.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{ color-scheme: dark; }
+  html,body{ margin:0; padding:0; background:#050505; }
+  *{ box-sizing:border-box; }
+  #root{ min-height:100vh; }
+  input::placeholder,textarea::placeholder{ color:#6A675F; opacity:1; }
+  button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{ outline:1px solid #E8B33C; outline-offset:3px; }
+  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  @media (prefers-reduced-motion: reduce){ *{ transition:none!important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+try {
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ===== FIREBASE — banco de dados compartilhado entre coach e Elaine =====
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB-gt8jVJNhk54gC8UKmnjiickBRkU37UY",
+  authDomain: "elaine--protocolo-40.firebaseapp.com",
+  projectId: "elaine--protocolo-40",
+  storageBucket: "elaine--protocolo-40.firebasestorage.app",
+  messagingSenderId: "848896665954",
+  appId: "1:848896665954:web:8515554623a65f1cd3a43b",
+};
+
+/* ================================================================
+   CT40 · ELAINE — versão colaborativa
+   Dados salvos em `db` (compartilhado entre coach e aluna, se ambos
+   abrirem dentro da mesma organização Claude). Sem `db`, o app roda
+   em modo local (nada é perdido na sessão, mas não sincroniza).
+   ================================================================ */
+
+const T = {
+  bg:"#050505", panel:"#0B0B0A",
+  rule:"#1C1B18", ruleGold:"#4A3A12",
+  gold:"#E8B33C", goldDim:"#8C6E22",
+  text:"#EDEAE3", soft:"#9C988E", mute:"#6A675F",
+  ok:"#7FA88A", warn:"#D2A23F", stop:"#C2564A",
+};
+const DISPLAY = "'Oswald','Arial Narrow','Helvetica Neue',sans-serif";
+const BODY = "'Inter',system-ui,-apple-system,sans-serif";
+const num2 = (i)=>String(i).padStart(2,"0");
+const yt = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q + " execução exercício tutorial")}`;
+const uid = () => Math.random().toString(36).slice(2,10);
+const hojeStr = () => new Date().toISOString().slice(0,10);
+
+/* ========= SEEDS (usados só na primeira vez, se o documento não existir) ========= */
+// fator de carga de cada um dos 12 meses do macrociclo (ondulatorio: 3 meses subindo + 1 deload)
+const FATORES_MES = [1.00,1.05,1.10,0.65,1.10,1.15,0.65,1.05,1.10,0.65,1.15,0.75];
+// ===== GERADOR DE FORCA: troca exercicios por bloco de mes e progride carga/tempo por semana =====
+// 3 variacoes de bloco; cada 4 meses o bloco muda (mes 1-4 = A, 5-8 = B, 9-12 = C)
+// ===== 12 variacoes por PADRAO DE MOVIMENTO — muda todo mes, mantem o padrao =====
+// indice do array = mes (0..11). O padrao de trabalho nunca muda, so a variacao e o estimulo.
+const PADRAO_PUXADA_VERTICAL = [
+  ["Puxada frente pegada aberta","Puxada vertical. Puxe ate a linha do queixo, sem jogar o tronco pra tras."],
+  ["Puxada pegada neutra (triangulo)","Puxada vertical. Pegada neutra poupa o ombro e pega mais dorsal baixa."],
+  ["Puxada pegada supinada","Puxada vertical. Pegada supinada recruta mais biceps junto do dorsal."],
+  ["Pulldown na corda (unilateral)","Puxada vertical. Um lado de cada vez, amplitude total, corrige assimetria."],
+  ["Barra fixa assistida (graviton)","Puxada vertical. Progressao real de forca relativa."],
+  ["Puxada pegada fechada pronada","Puxada vertical. Pegada fechada muda o angulo de tracao no dorsal."],
+  ["Pullover na polia alta","Puxada vertical. Braco estendido — isola dorsal sem pegar biceps."],
+  ["Puxada frente com pegada em V","Puxada vertical. Cotovelos colados, foco em amplitude total."],
+  ["Barra fixa negativa","Puxada vertical. So a fase excentrica, descida em 5s."],
+  ["Puxada alternada unilateral na polia","Puxada vertical. Anti-rotacao junto — o core trabalha pra segurar o tronco."],
+  ["Barra fixa com elastico","Puxada vertical. Elastico assiste so no ponto mais fraco."],
+  ["Puxada frente cadenciada 3-1-3","Puxada vertical. Tempo sob tensao alto, carga menor, controle maximo."],
+];
+const PADRAO_PUXADA_HORIZONTAL = [
+  ["Remada baixa triangulo","Puxada horizontal. Peito aberto, cotovelo junto ao corpo."],
+  ["Remada unilateral com halter no banco","Puxada horizontal. Um lado por vez, core travado."],
+  ["Remada curvada com barra","Puxada horizontal. Tronco a 45 graus, lombar neutra o tempo todo."],
+  ["Remada cavalinho (T-bar) com peito apoiado","Puxada horizontal. Peito apoiado tira a lombar da conta."],
+  ["Remada na maquina pegada neutra","Puxada horizontal. Carga alta com estabilidade total."],
+  ["Remada invertida na barra baixa","Puxada horizontal. Peso do corpo, angulo ajustavel pela altura dos pes."],
+  ["Remada serrote pesada","Puxada horizontal. Carga alta unilateral, puxa ate o quadril."],
+  ["Remada na polia com pegada aberta","Puxada horizontal. Pegada aberta pega mais dorsal alto e romboide."],
+  ["Remada Meadows (landmine unilateral)","Puxada horizontal. Angulo da landmine da uma tracao diferente do dorsal."],
+  ["Remada baixa cadenciada com pausa","Puxada horizontal. Pausa de 2s na contracao maxima."],
+  ["Remada Pendlay","Puxada horizontal. Barra toca o chao a cada rep — explosao do zero."],
+  ["Remada sentada na maquina unilateral","Puxada horizontal. Fecha o ciclo corrigindo assimetrias."],
+];
+const PADRAO_EMPURRAR_HORIZONTAL = [
+  ["Supino reto com halteres","Empurrar horizontal. Cotovelo a ~45 graus, descida controlada."],
+  ["Supino inclinado com halteres","Empurrar horizontal. Inclinacao 30 graus, porcao clavicular."],
+  ["Supino reto com barra","Empurrar horizontal. Padrao de forca, carga progressiva."],
+  ["Crucifixo na maquina (peck deck)","Empurrar horizontal. Isolamento, alongamento maximo do peitoral."],
+  ["Flexao de braco com pes elevados","Empurrar horizontal. Peso do corpo, core travado junto."],
+  ["Supino declinado com halteres","Empurrar horizontal. Angulo que poupa o ombro, pega porcao inferior."],
+  ["Supino unilateral com halter","Empurrar horizontal. Anti-rotacao — o core segura o tronco."],
+  ["Crossover na polia media","Empurrar horizontal. Tensao constante do inicio ao fim."],
+  ["Supino na maquina articulada","Empurrar horizontal. Carga alta com trajetoria guiada."],
+  ["Flexao com pausa no chao","Empurrar horizontal. Pausa de 2s embaixo, sai da inercia."],
+  ["Supino inclinado com barra","Empurrar horizontal. Carga alta no angulo superior."],
+  ["Supino reto cadenciado 4-1-1","Empurrar horizontal. Tempo sob tensao longo na excentrica."],
+];
+const PADRAO_EMPURRAR_VERTICAL = [
+  ["Desenvolvimento militar sentado com halteres","Empurrar vertical. Padrao overhead que o cross nao cobre bem sozinho."],
+  ["Desenvolvimento Arnold","Empurrar vertical. Rotacao no caminho, pega anterior e medio."],
+  ["Desenvolvimento em pe com barra (overhead press)","Empurrar vertical. Core travado, gluteo apertado, sem arquear."],
+  ["Desenvolvimento na maquina","Empurrar vertical. Trajetoria guiada pra carga maior com seguranca."],
+  ["Desenvolvimento no landmine","Empurrar vertical. Barra sobe na diagonal — seguro pro ombro."],
+  ["Elevacao lateral + desenvolvimento (combo)","Empurrar vertical. Pre-exaustao do deltoide medio antes do press."],
+  ["Push press","Empurrar vertical. Impulso leve da perna pra vencer o ponto morto."],
+  ["Desenvolvimento unilateral com halter","Empurrar vertical. Anti-lateroflexao — core trabalha junto."],
+  ["Desenvolvimento sentado com barra","Empurrar vertical. Encosto apoiado, foco total no ombro."],
+  ["Desenvolvimento com kettlebell (bottoms-up)","Empurrar vertical. Estabilidade de ombro e punho no maximo."],
+  ["Desenvolvimento com pausa no topo","Empurrar vertical. Pausa de 2s em cima, controle da posicao final."],
+  ["Desenvolvimento cadenciado 3-1-3","Empurrar vertical. Carga menor, controle maximo pra fechar o ciclo."],
+];
+const PADRAO_BICEPS = [
+  ["Rosca direta com halteres","Flexao de cotovelo. Bi-set com o triceps abaixo."],
+  ["Rosca martelo","Flexao de cotovelo. Pegada neutra, pega braquial e antebraco."],
+  ["Rosca na barra W","Flexao de cotovelo. Pegada que poupa o punho."],
+  ["Rosca alternada com supinacao","Flexao de cotovelo. Gira o punho subindo, contracao maxima."],
+  ["Rosca 21","Flexao de cotovelo. Meia baixa, meia alta, completa — choque metabolico."],
+  ["Rosca concentrada","Flexao de cotovelo. Isolamento puro, sem impulso."],
+  ["Rosca Scott (banco inclinado)","Flexao de cotovelo. Braco apoiado elimina qualquer roubo."],
+  ["Rosca na polia baixa","Flexao de cotovelo. Tensao constante em toda amplitude."],
+  ["Rosca inversa (pronada)","Flexao de cotovelo. Pega braquiorradial e antebraco."],
+  ["Rosca com corda na polia","Flexao de cotovelo. Pegada neutra com tensao continua."],
+  ["Rosca spider","Flexao de cotovelo. Peito apoiado no banco inclinado, zero impulso."],
+  ["Rosca cadenciada com pausa","Flexao de cotovelo. Pausa de 2s no pico, desce em 4s."],
+];
+const PADRAO_TRICEPS = [
+  ["Triceps corda na polia","Extensao de cotovelo. Cotovelo fixo ao lado do corpo, abre a corda no fim."],
+  ["Triceps frances sentado","Extensao de cotovelo. Amplitude completa, cotovelo pro teto."],
+  ["Triceps testa com barra W","Extensao de cotovelo. Descida ate a testa, cotovelo parado."],
+  ["Mergulho em banco","Extensao de cotovelo. Peso do corpo, descida ate 90 graus."],
+  ["Triceps coice unilateral","Extensao de cotovelo. Isolamento, braco paralelo ao chao."],
+  ["Triceps na polia pegada pronada","Extensao de cotovelo. Barra reta, pegada por cima."],
+  ["Paralela assistida","Extensao de cotovelo. Padrao de forca com assistencia."],
+  ["Triceps unilateral na polia","Extensao de cotovelo. Corrige diferenca entre os bracos."],
+  ["Flexao fechada (diamante)","Extensao de cotovelo. Peso do corpo, cotovelo colado ao tronco."],
+  ["Triceps testa com halteres (neutro)","Extensao de cotovelo. Pegada neutra poupa cotovelo."],
+  ["Triceps na polia alta cruzado","Extensao de cotovelo. Angulo novo pra cabeca longa."],
+  ["Triceps cadenciado com pausa","Extensao de cotovelo. Pausa de 2s no alongamento."],
+];
+const PADRAO_FLEXAO_JOELHO = [
+  ["Mesa flexora","Flexao de joelho. Isolamento de isquiotibiais, controle na descida."],
+  ["Cadeira flexora sentada","Flexao de joelho. Angulo de quadril diferente muda o recrutamento."],
+  ["Flexora unilateral","Flexao de joelho. Uma perna por vez, corrige assimetria."],
+  ["Flexao nordica assistida","Flexao de joelho. Excentrica controlada — a mais forte pra isquios."],
+  ["Mesa flexora com pausa","Flexao de joelho. Pausa de 2s na contracao maxima."],
+  ["Flexora em pe na polia","Flexao de joelho. Em pe, unilateral, com tensao continua."],
+  ["Curl nordico com elastico","Flexao de joelho. Elastico assiste na volta."],
+  ["Mesa flexora cadenciada 4-1-1","Flexao de joelho. Excentrica de 4s, tempo sob tensao alto."],
+  ["Flexora com bola suica (ponte + curl)","Flexao de joelho. Cadeia posterior + estabilidade junto."],
+  ["Cadeira flexora drop-set","Flexao de joelho. Reduz a carga na falha e continua."],
+  ["Flexora unilateral com pausa","Flexao de joelho. Isola e ainda segura a contracao."],
+  ["Deslizamento de calcanhar (slider curl)","Flexao de joelho. Controle excentrico puro no chao."],
+];
+const PADRAO_AGACHAMENTO = [
+  ["Cadeira extensora","Extensao de joelho. Isolamento puro de quadriceps, zero carga na coluna."],
+  ["Leg press 45 graus","Extensao de joelho. Quadril colado no encosto do inicio ao fim."],
+  ["Agachamento no Smith","Extensao de joelho. Trajetoria guiada, profundidade controlada."],
+  ["Agachamento goblet com halter","Extensao de joelho. Peso na frente ajuda a manter o tronco ereto."],
+  ["Hack machine","Extensao de joelho. Coluna apoiada, carga alta com seguranca."],
+  ["Afundo com halteres","Extensao de joelho. Unilateral, tronco ereto, passo controlado."],
+  ["Agachamento bulgaro","Extensao de joelho. Pe de tras elevado — unilateral pesado."],
+  ["Leg press unilateral","Extensao de joelho. Uma perna por vez, corrige diferenca."],
+  ["Agachamento frontal com halteres","Extensao de joelho. Carga na frente exige mais do core e quadriceps."],
+  ["Step-up no banco alto","Extensao de joelho. Padrao funcional, sobe sem impulso da perna de tras."],
+  ["Agachamento com pausa embaixo","Extensao de joelho. Pausa de 2s no fundo, sai sem inercia."],
+  ["Extensora cadenciada com pausa","Extensao de joelho. Pico de contracao segurado 2s."],
+];
+const PADRAO_EXTENSAO_QUADRIL = [
+  ["Elevacao pelvica com barra","Extensao de quadril. Queixo pra baixo, pausa de 1s no topo."],
+  ["Stiff com halteres","Extensao de quadril. Hip hinge — quadril pra tras, lombar neutra."],
+  ["Elevacao pelvica unilateral","Extensao de quadril. Uma perna por vez, cadeia posterior + estabilidade."],
+  ["Levantamento terra romeno com barra","Extensao de quadril. Padrao de forca. Lombar fletiu, a serie acabou."],
+  ["Coice na polia (gluteo)","Extensao de quadril. Isolamento, amplitude controlada."],
+  ["Hip thrust na maquina","Extensao de quadril. Carga alta com estabilidade total."],
+  ["Bom dia (good morning) leve","Extensao de quadril. Hip hinge com barra nas costas, carga leve."],
+  ["Ponte de gluteo com elastico","Extensao de quadril. Elastico nos joelhos ativa gluteo medio junto."],
+  ["Terra sumo com halter","Extensao de quadril. Base aberta, mais gluteo e adutor."],
+  ["Elevacao pelvica com pausa de 3s","Extensao de quadril. Isometria no topo, contracao maxima."],
+  ["Stiff unilateral (RDL)","Extensao de quadril. Equilibrio + cadeia posterior, quadril quadrado."],
+  ["Kickback na maquina","Extensao de quadril. Fecha o ciclo com isolamento controlado."],
+];
+const PADRAO_PANTURRILHA = [
+  ["Elevacao de panturrilha em pe","Amplitude completa, sem pressa."],
+  ["Panturrilha sentada","Pega o soleo, complementa a versao em pe."],
+  ["Panturrilha no leg press","Carga alta com coluna apoiada."],
+  ["Panturrilha unilateral em pe","Uma perna por vez, corrige assimetria."],
+  ["Panturrilha no Smith","Carga guiada, amplitude total no degrau."],
+  ["Panturrilha com pausa de 2s no topo","Isometria na contracao maxima."],
+  ["Panturrilha no step (peso do corpo)","Alto volume, amplitude maxima."],
+  ["Panturrilha sentada drop-set","Reduz a carga na falha e continua."],
+  ["Panturrilha em pe cadenciada 3-1-3","Tempo sob tensao alto."],
+  ["Panturrilha no leg press unilateral","Carga alta e unilateral."],
+  ["Salto no lugar (pliometria leve)","Estimulo elastico — potencia, nao so forca."],
+  ["Caminhada na ponta dos pes com carga","Funcional, resistencia do triceps sural."],
+];
+const PADRAO_ABDOMEN = [
+  ["Abdominal infra (elevacao de pernas)","[abdomen] Lombar sempre encostada. Faz logo apos o principal, descanso curto."],
+  ["Prancha lateral","[abdomen] Cinturao ativo, quadril alinhado."],
+  ["Abdominal bicicleta","[abdomen] Ritmo controlado, sem puxar o pescoco."],
+  ["Roda abdominal (ab wheel) ajoelhada","[abdomen] Anti-extensao — so ate onde a lombar nao cede."],
+  ["Pallof press","[abdomen] Anti-rotacao na polia, core funcional."],
+  ["Prancha com toque no ombro","[abdomen] Anti-rotacao dinamica, quadril parado."],
+  ["Abdominal na polia alta (ajoelhado)","[abdomen] Com carga progressiva, como qualquer musculo."],
+  ["Hollow hold","[abdomen] Isometria total, lombar colada no chao."],
+  ["Dead bug com carga","[abdomen] Anti-extensao classico, agora com halter."],
+  ["Prancha com elevacao de perna","[abdomen] Aumenta a demanda anti-extensao."],
+  ["Abdominal V-up","[abdomen] Movimento completo, exige controle."],
+  ["Prancha dinamica (alto-baixo)","[abdomen] Transicao entre antebraco e mao, core estavel."],
+];
+const PADRAO_LOMBAR = [
+  ["Extensao lombar leve (superman)","[lombar] Sobe so ate a linha neutra, sem hiperestender."],
+  ["Bird dog","[lombar] Anti-rotacao, pausa de 2s no topo."],
+  ["Ponte de gluteo isometrica","[lombar] Segura no topo, gluteo apertado."],
+  ["Good morning leve com barra","[lombar] Hip hinge leve, fortalece o eretor da espinha."],
+  ["Hiperextensao na bancada 45 graus","[lombar] Sobe ate neutro, sem passar."],
+  ["Bird dog com elastico","[lombar] Resistencia extra no padrao anti-rotacao."],
+  ["Prancha reversa","[lombar] Cadeia posterior inteira em isometria."],
+  ["Extensao lombar com pausa","[lombar] 2s segurando na posicao neutra."],
+  ["Ponte unilateral isometrica","[lombar] Um lado por vez, anti-rotacao junto."],
+  ["Hiperextensao com carga leve","[lombar] Progressao de carga controlada."],
+  ["Bird dog cadenciado","[lombar] Movimento lento, 3s pra estender e 3s pra voltar."],
+  ["Ponte de gluteo com elevacao de perna","[lombar] Estabilidade maxima de quadril e lombar."],
+];
+const PADRAO_ALONGAMENTO_SUP = [
+  ["Alongamento de peitoral no batente","[alongamento] Fecha o par — solta o ombro que acabou de trabalhar."],
+  ["Alongamento de dorsal na barra","[alongamento] Pendura leve e respira, solta a coluna toracica."],
+  ["Mobilidade toracica em quadrupedia","[alongamento] Rotacao vindo das costelas, quadril parado."],
+  ["Alongamento de triceps acima da cabeca","[alongamento] Cotovelo apontado pro teto, puxa suave."],
+  ["Rotacao toracica deitada (open book)","[alongamento] Joelhos juntos, abre o braco e acompanha com o olhar."],
+  ["Alongamento de deltoide posterior","[alongamento] Braco cruzado na frente do peito."],
+  ["Cachorro olhando pro chao","[alongamento] Alonga dorsal, ombro e posterior junto."],
+  ["Mobilidade de ombro com bastao","[alongamento] Passa o bastao por cima da cabeca, pegada larga."],
+  ["Alongamento de biceps na parede","[alongamento] Braco estendido pra tras, gira o tronco."],
+  ["Alongamento de antebraco e punho","[alongamento] Importante com tanto trabalho de pegada."],
+  ["Respiracao diafragmatica em decubito","[alongamento] Baixa o tonus e fecha a sessao."],
+  ["Mobilidade cervical suave","[alongamento] Solta o trapezio superior, movimentos lentos."],
+];
+const PADRAO_ALONGAMENTO_INF = [
+  ["Alongamento de posterior de coxa","[alongamento] Fecha o par — alongamento moderado, sem dor."],
+  ["Alongamento de flexor de quadril (afundo)","[alongamento] Quadril pra frente, gluteo ativo, solta o psoas."],
+  ["Alongamento de gluteo (figura 4)","[alongamento] Puxa a coxa em direcao ao peito, lombar no chao."],
+  ["Alongamento de quadriceps em pe","[alongamento] Joelhos alinhados, apoio se precisar."],
+  ["Mobilidade de quadril 90/90","[alongamento] Transicoes controladas, qualidade de amplitude."],
+  ["Alongamento de adutores (ra)","[alongamento] Abre o quadril devagar, respirando."],
+  ["Alongamento de panturrilha na parede","[alongamento] Calcanhar no chao, joelho estendido."],
+  ["Pombo (pigeon pose)","[alongamento] Gluteo profundo e rotadores externos."],
+  ["Alongamento de banda iliotibial","[alongamento] Cruzando a perna, inclina o tronco pro lado."],
+  ["Mobilidade de tornozelo na parede","[alongamento] Joelho toca a parede sem o calcanhar sair."],
+  ["Alongamento de lombar (joelhos ao peito)","[alongamento] Descompressao suave da coluna."],
+  ["Respiracao diafragmatica deitada","[alongamento] 3-4 respiracoes lentas por minuto, fecha a sessao."],
+];
+const PROGRESSAO_SEMANA = [
+  {sets:3, repsMult:1.00, rot:"adaptacao", tempoMult:1.00, descanso:"60s"},
+  {sets:3, repsMult:1.00, rot:"volume",    tempoMult:1.15, descanso:"60s"},
+  {sets:4, repsMult:0.85, rot:"intensidade (mais carga, menos rep)", tempoMult:1.25, descanso:"75s"},
+  {sets:3, repsMult:0.90, rot:"consolidacao", tempoMult:1.00, descanso:"60s"},
+];
+function prescreverForca(repsBase, semanaIdx, fatorMes){
+  const p = PROGRESSAO_SEMANA[semanaIdx];
+  const reps = Math.max(6, Math.round(repsBase*p.repsMult*(fatorMes<0.8?1.15:1)));
+  const sets = fatorMes<0.8 ? Math.max(2,p.sets-1) : p.sets;
+  return `${sets} x ${reps}`;
+}
+function pctCarga(semanaIdx, fatorMes){
+  const base = [0.95,1.00,1.07,0.97][semanaIdx];
+  return Math.round(base*fatorMes*100);
+}
+function gerarForcaMes(mesIdx){
+  const fatorMes = FATORES_MES[mesIdx];
+  const pick = (arr)=>arr[mesIdx % arr.length];
+  // padroes de movimento fixos — a variacao do exercicio muda todo mes
+  const sup = [
+    pick(PADRAO_PUXADA_VERTICAL), pick(PADRAO_PUXADA_HORIZONTAL),
+    pick(PADRAO_EMPURRAR_HORIZONTAL), pick(PADRAO_EMPURRAR_VERTICAL),
+    pick(PADRAO_BICEPS), pick(PADRAO_TRICEPS),
+  ];
+  const post = [
+    pick(PADRAO_FLEXAO_JOELHO), pick(PADRAO_AGACHAMENTO),
+    pick(PADRAO_EXTENSAO_QUADRIL), pick(PADRAO_PANTURRILHA),
+  ];
+  const coreSup = [ pick(PADRAO_ABDOMEN), pick(PADRAO_LOMBAR), pick(PADRAO_ALONGAMENTO_SUP) ];
+  // desencontra em 6 pra que o dia de perna nao repita o mesmo abdomen/lombar do dia de braco
+  const pick6 = (arr)=>arr[(mesIdx+6) % arr.length];
+  const corePost = [ pick6(PADRAO_ABDOMEN), pick6(PADRAO_LOMBAR), pick(PADRAO_ALONGAMENTO_INF) ];
+  const ehTempo = (nome)=>/along|mobilidade|respira|prancha|hold|isometr|ponte|bird dog|hollow/i.test(nome);
+  const semanas = [0,1,2,3].map(w=>{
+    const p = PROGRESSAO_SEMANA[w];
+    const pct = pctCarga(w, fatorMes);
+    const selo = `sem ${w+1}/4 - ${p.rot} - alvo ~${pct}% da carga de referencia - descanso ${p.descanso}`;
+    const presTempo = (nome, repsBase)=> ehTempo(nome)
+      ? (/along|mobilidade|respira/i.test(nome) ? `${Math.round(25*p.tempoMult)}s cada lado` : `${p.sets} x ${Math.round(32*p.tempoMult)}s`)
+      : prescreverForca(repsBase, w, fatorMes);
+    return {
+      semana:w+1, rotulo:p.rot, pctCarga:pct, descanso:p.descanso,
+      superior: sup.map(([nome,nota])=>({id:uid(), nome, nota:`${nota} (${selo})`, pres:prescreverForca(12,w,fatorMes), tempo:""})),
+      superiorCore: coreSup.map(([nome,nota])=>({id:uid(), nome, nota, pres:presTempo(nome,14), tempo:""})),
+      posterior: post.map(([nome,nota])=>({id:uid(), nome, nota:`${nota} (${selo})`, pres:prescreverForca(13,w,fatorMes), tempo:""})),
+      posteriorCore: corePost.map(([nome,nota])=>({id:uid(), nome, nota, pres:presTempo(nome,14), tempo:""})),
+    };
+  });
+  return {mes:mesIdx+1, blocoNome:`Bloco ${mesIdx+1} - exercicios novos`, semanas};
+}
+const SEED_FORCA = { meses: Array.from({length:12}, (_,i)=>gerarForcaMes(i)) };
+
+
+// ===== GERADOR DE CARDIO: varia modalidade, formato e carga por mês e por semana =====
+const RAMP_SEMANA = [0.92,1.00,1.08,1.00]; // onda dentro do mês: sobe, sobe, pico, recua
+// modalidades rotacionam por mês pra não enjoar (e trabalhar padrões motores diferentes)
+const MODALIDADES_CONTINUO = [
+  ["Remo ergômetro","tronco estável, a perna empurra primeiro e o braço fecha por último"],
+  ["Bike ergométrica","cadência 80-90 rpm, sem balançar o quadril no banco"],
+  ["Esteira em inclinação (caminhada forte)","inclinação 8-12%, sem segurar no corrimão"],
+  ["Elíptico","passada longa, empurra e puxa os braços junto"],
+  ["Corrida leve / trote","passada curta e cadência alta, pisada sob o quadril"],
+  ["Ski ergômetro ou remo alternado","alterna a cada 10 min pra dividir o desgaste"],
+];
+// formatos de intervalado — cada mês pega um diferente, e ele ainda evolui dentro do mês
+const FORMATOS_INTERVALADO = [
+  {nome:"Rounds curtos estilo Hyrox", montar:(r,desc)=>`${r} rounds: 200m remo/bike · 8 burpees · 30s corda · ${desc}s descanso`},
+  {nome:"Pirâmide de esforço", montar:(r,desc)=>`${r} rounds: 250m remo · 10 wall ball · 12 step-up no banco · ${desc}s descanso`},
+  {nome:"EMOM (a cada minuto)", montar:(r,desc)=>`${r} minutos EMOM: 15 cal bike + o que sobrar do minuto é descanso (~${desc}s)`},
+  {nome:"Tabata estendido", montar:(r,desc)=>`${r} blocos de 8×(20s forte / 10s leve) no remo, ${desc}s entre blocos`},
+  {nome:"Intervalos longos 3'/2'", montar:(r,desc)=>`${r} intervalos: 3 min forte · 2 min leve (bike ou esteira inclinada), transição de ${desc}s`},
+  {nome:"Circuito de estações", montar:(r,desc)=>`${r} voltas: 300m bike · 10 kettlebell swing · 20 mountain climber · 10 air squat · ${desc}s descanso`},
+];
+function ajustarBloco(min){ return `${Math.max(3,Math.round(min))} min`; }
+function gerarCardioSemana(mesIdx, semanaIdx){
+  const fator = FATORES_MES[mesIdx]*RAMP_SEMANA[semanaIdx];
+  const rot = `semana ${semanaIdx+1}/4 · mês ${mesIdx+1}`;
+  // modalidades trocam por mês
+  const [modA, dicaA] = MODALIDADES_CONTINUO[mesIdx % MODALIDADES_CONTINUO.length];
+  const [modB, dicaB] = MODALIDADES_CONTINUO[(mesIdx+3) % MODALIDADES_CONTINUO.length];
+  const formato = FORMATOS_INTERVALADO[mesIdx % FORMATOS_INTERVALADO.length];
+
+  // SEG — contínuo de base
+  const totSeg = Math.max(30, Math.round(60*fator/5)*5);
+  const kcalSeg = Math.max(160, Math.round(430*fator/5)*5);
+  const rpeSeg = fator>=1.08 ? "6" : fator>=1.0 ? "5-6" : "4-5";
+  const fcSeg  = fator>=1.08 ? "70-78%" : fator>=1.0 ? "65-75%" : "60-70%";
+
+  // QUA — intervalado (rounds e descanso evoluem com o fator)
+  const rounds = Math.max(5, Math.round(12*fator));
+  const descanso = Math.max(20, Math.round(60/fator/5)*5);
+  const totQua = Math.max(30, Math.round(60*fator/5)*5);
+  const kcalQua = Math.max(180, Math.round(520*fator/5)*5);
+
+  // SEX — contínuo longo
+  const totSex = Math.max(30, Math.round(60*fator/5)*5);
+  const kcalSex = Math.max(170, Math.round(470*fator/5)*5);
+
+  return {
+    semana: semanaIdx+1,
+    SEG:{ sistema:"Contínuo · base aeróbica", nome:`${modA} em ritmo constante`, duracao:`${totSeg} min`,
+      kcalNum:kcalSeg, kcalTxt:`${kcalSeg-30}-${kcalSeg+30} kcal`,
+      carga:`Ritmo que ainda dá pra soltar frase curta — ${dicaA}. (${rot})`,
+      blocos:[
+        {id:uid(), fase:"Aquecimento progressivo", duracao:ajustarBloco(totSeg*0.14), rpe:"3", fc:"55-65%"},
+        {id:uid(), fase:`Corpo principal · ${modA} contínuo`, duracao:ajustarBloco(totSeg*0.76), rpe:rpeSeg, fc:fcSeg},
+        {id:uid(), fase:"Volta à calma", duracao:ajustarBloco(totSeg*0.10), rpe:"2", fc:"<55%"},
+      ]},
+    QUA:{ sistema:`Intervalado · ${formato.nome}`, nome:`${formato.nome} — estímulo forte da semana`, duracao:`${totQua} min`,
+      kcalNum:kcalQua, kcalTxt:`${kcalQua-40}-${kcalQua+40} kcal`,
+      carga:`Esforço forte nas estações, técnica intacta do primeiro ao último round. (${rot})`,
+      blocos:[
+        {id:uid(), fase:"Aquecimento + mobilidade específica", duracao:ajustarBloco(totQua*0.16), rpe:"3-4", fc:"—"},
+        {id:uid(), fase:formato.montar(rounds, descanso), duracao:ajustarBloco(totQua*0.68), rpe:fator>=1.08?"9":"8-9", fc:"—"},
+        {id:uid(), fase:"Volta à calma + alongamento", duracao:ajustarBloco(totQua*0.16), rpe:"2", fc:"—"},
+      ]},
+    SEX:{ sistema:"Contínuo · longo moderado", nome:`${modB} — volume da semana`, duracao:`${totSex} min`,
+      kcalNum:kcalSex, kcalTxt:`${kcalSex-30}-${kcalSex+30} kcal`,
+      carga:`Ritmo moderado sustentado — ${dicaB}. Constrói base sem destruir o fim de semana. (${rot})`,
+      blocos:[
+        {id:uid(), fase:"Aquecimento progressivo", duracao:ajustarBloco(totSex*0.14), rpe:"3", fc:"55-65%"},
+        {id:uid(), fase:`Corpo principal · ${modB}`, duracao:ajustarBloco(totSex*0.76), rpe:rpeSeg, fc:fcSeg},
+        {id:uid(), fase:"Volta à calma", duracao:ajustarBloco(totSex*0.10), rpe:"2", fc:"<55%"},
+      ]},
+  };
+}
+function gerarSemanasCardio(mesIdx){ return [0,1,2,3].map(w=>gerarCardioSemana(mesIdx,w)); }
+const SEED_CARDIO = { meses: Array.from({length:12}, (_,i)=>({mes:i+1, semanas: gerarSemanasCardio(i)})) };
+
+
+const SEED_RECUPERACAO = {
+  mobilidade:[
+    {id:uid(), nome:"Mobilidade de quadril (90/90)", nota:"Transições controladas, sem pressa — qualidade de amplitude, não velocidade.", pres:"3 min cada lado"},
+    {id:uid(), nome:"Mobilidade torácica em quadrupedia", nota:"Rotação vindo das costelas, quadril parado.", pres:"8-10 cada lado"},
+    {id:uid(), nome:"Cachorro olhando pro céu / pro chão", nota:"Alterna flexão e extensão de coluna torácica com respiração.", pres:"8-10 repetições"},
+    {id:uid(), nome:"Mobilidade de tornozelo em joelho na parede", nota:"Joelho tocando a parede sem o calcanhar sair do chão.", pres:"10 cada lado"},
+  ],
+  core:[
+    {id:uid(), nome:"Curl-up modificado (McGill)", nota:"Mãos sob a lombar, uma perna dobrada e outra estendida, eleva só a cabeça/ombros — sem fletir a lombar. Isometria.", pres:"3 × 8-10s (troca a perna a cada rep)"},
+    {id:uid(), nome:"Prancha lateral (McGill)", nota:"Progressão gradual — começa com joelhos apoiados se precisar, evolui pra perna estendida.", pres:"3 × 15-20s cada lado"},
+    {id:uid(), nome:"Bird dog (McGill)", nota:"Braço e perna opostos, quadril e ombro travados, sem rodar o tronco. Pausa de 2s no topo.", pres:"3 × 8 cada lado"},
+  ],
+  alongamento:[
+    {id:uid(), nome:"Alongamento de posterior de coxa", nota:"Sensação de alongamento moderado, sem dor — segurar a respiração solta.", pres:"2 × 30s cada lado"},
+    {id:uid(), nome:"Alongamento de quadríceps em pé", nota:"Apoio se precisar de equilíbrio, joelhos alinhados.", pres:"2 × 30s cada lado"},
+    {id:uid(), nome:"Alongamento de peitoral no batente", nota:"Braço a ~90°, rotação do tronco para longe da parede.", pres:"2 × 30s cada lado"},
+    {id:uid(), nome:"Alongamento de glúteo (figura 4 deitada)", nota:"Puxa a coxa de trás em direção ao peito, mantém a lombar no chão.", pres:"2 × 30s cada lado"},
+    {id:uid(), nome:"Respiração diafragmática deitada", nota:"Fecha a sessão de alongamento — 3-4 respirações lentas por minuto.", pres:"3 min"},
+  ],
+};
+
+const SEED_PERIODIZACAO = {
+  inicioPrograma: "",
+  mesociclos: [
+    {id:uid(), mes:1, nome:"Adaptação anatômica", tipo:"base", fatorCarga:1.0, foco:"Aprendizado de padrão de movimento, técnica e tolerância ao volume. Cargas conservadoras."},
+    {id:uid(), mes:2, nome:"Acúmulo I", tipo:"carga", fatorCarga:1.05, foco:"Progressão de carga na musculação e de duração/intensidade no cardio."},
+    {id:uid(), mes:3, nome:"Acúmulo II", tipo:"carga", fatorCarga:1.10, foco:"Segue progressão. Reavaliação de testes físicos ao final do mês."},
+    {id:uid(), mes:4, nome:"Deload", tipo:"deload", fatorCarga:0.65, foco:"Redução de ~30-40% em volume e carga. Semana de recuperação ativa antes de reiniciar."},
+    {id:uid(), mes:5, nome:"Intensificação I", tipo:"carga", fatorCarga:1.10, foco:"Cargas mais altas, menos repetições. Cardio ganha mais componente intervalado."},
+    {id:uid(), mes:6, nome:"Intensificação II", tipo:"carga", fatorCarga:1.15, foco:"Pico de carga do semestre. Reavaliação de testes físicos ao final do mês."},
+    {id:uid(), mes:7, nome:"Deload", tipo:"deload", fatorCarga:0.65, foco:"Redução de volume e carga. Reavaliação geral (ISAK) sugerida."},
+    {id:uid(), mes:8, nome:"Acúmulo III", tipo:"carga", fatorCarga:1.05, foco:"Reinício de progressão, base já mais alta que o primeiro semestre."},
+    {id:uid(), mes:9, nome:"Acúmulo IV", tipo:"carga", fatorCarga:1.10, foco:"Segue progressão de carga e cardio."},
+    {id:uid(), mes:10, nome:"Deload", tipo:"deload", fatorCarga:0.65, foco:"Redução de volume e carga."},
+    {id:uid(), mes:11, nome:"Intensificação III", tipo:"carga", fatorCarga:1.15, foco:"Cargas mais altas do ciclo. Reavaliação de testes físicos ao final do mês."},
+    {id:uid(), mes:12, nome:"Consolidação e reavaliação anual", tipo:"deload", fatorCarga:0.75, foco:"Fecha o ciclo de 12 meses. Reavaliação completa (ISAK + testes) e planejamento do próximo ano."},
+  ],
+};
+const MESO_INFO = {
+  base:{ nome:"Base", cor:T.soft },
+  carga:{ nome:"Fase de carga", cor:T.ok },
+  deload:{ nome:"Deload", cor:T.warn },
+};
+function mesAtual(cfg){
+  if(!cfg || !cfg.inicioPrograma) return null;
+  const ini = new Date(cfg.inicioPrograma+"T00:00:00");
+  const hoje = new Date(hojeStr()+"T00:00:00");
+  let diffMeses = (hoje.getFullYear()-ini.getFullYear())*12 + (hoje.getMonth()-ini.getMonth());
+  if(hoje.getDate()<ini.getDate()) diffMeses -= 1;
+  if(diffMeses<0) diffMeses = 0;
+  const idx = diffMeses % 12;
+  return { ...cfg.mesociclos[idx], mesDoAno: diffMeses+1 };
+}
+function semanaAtual(cfg){
+  if(!cfg || !cfg.inicioPrograma) return 1;
+  const ini = new Date(cfg.inicioPrograma+"T00:00:00");
+  const hoje = new Date(hojeStr()+"T00:00:00");
+  const dias = Math.max(0, Math.round((hoje-ini)/864e5));
+  return (Math.floor(dias/7) % 4) + 1;
+}
+
+const SEED_REGRAS = { lista:[
+  "Coluna neutra sob carga, sempre.",
+  "Dor até 3/10 durante o treino, que some em 24h, é aceitável. Formigamento, choque ou dor que piora — para e avisa o coach.",
+  "PSE é assunto sério: se marcar um número, é porque sentiu aquilo.",
+  "Cardio não substitui musculação, e musculação não substitui cardio.",
+  "Açúcar não é proibido, é administrado.",
+  "Reavaliação a cada 4 semanas.",
+]};
+
+// Cada alimento traz quanto do macro ele tem por unidade — o app calcula a QUANTIDADE por refeição
+const SEED_PORCOES = {
+  refeicoes:{ proteina:4, carboidrato:4, gordura:3 },
+  proteina:{ nome:"Proteína", unidadeMacro:"g de proteína", alimentos:[
+    {id:uid(), nome:"Frango grelhado", unidade:"g", macroPorUnidade:0.31, passo:10},
+    {id:uid(), nome:"Patinho moído", unidade:"g", macroPorUnidade:0.30, passo:10},
+    {id:uid(), nome:"Tilápia ou peixe branco", unidade:"g", macroPorUnidade:0.26, passo:10},
+    {id:uid(), nome:"Ovo inteiro", unidade:"unidade(s)", macroPorUnidade:6.3, passo:1},
+    {id:uid(), nome:"Whey protein", unidade:"scoop(s) de 30g", macroPorUnidade:24, passo:1},
+    {id:uid(), nome:"Iogurte grego natural", unidade:"pote(s) de 130g", macroPorUnidade:13, passo:1},
+  ]},
+  carboidrato:{ nome:"Carboidrato", unidadeMacro:"g de carboidrato", alimentos:[
+    {id:uid(), nome:"Arroz cozido", unidade:"col. de sopa", macroPorUnidade:6.5, passo:1},
+    {id:uid(), nome:"Batata doce cozida", unidade:"g", macroPorUnidade:0.20, passo:10},
+    {id:uid(), nome:"Pão integral", unidade:"fatia(s)", macroPorUnidade:12, passo:1},
+    {id:uid(), nome:"Aveia em flocos", unidade:"col. de sopa", macroPorUnidade:9, passo:1},
+    {id:uid(), nome:"Banana", unidade:"unidade(s) média(s)", macroPorUnidade:26, passo:1},
+    {id:uid(), nome:"Macarrão cozido", unidade:"g", macroPorUnidade:0.25, passo:10},
+  ]},
+  gordura:{ nome:"Gordura", unidadeMacro:"g de gordura", alimentos:[
+    {id:uid(), nome:"Azeite de oliva", unidade:"col. de chá", macroPorUnidade:4.5, passo:1},
+    {id:uid(), nome:"Castanha de caju ou amêndoa", unidade:"unidade(s)", macroPorUnidade:0.7, passo:1},
+    {id:uid(), nome:"Abacate", unidade:"g", macroPorUnidade:0.15, passo:10},
+    {id:uid(), nome:"Pasta de amendoim", unidade:"col. de sopa", macroPorUnidade:8, passo:1},
+  ]},
+};
+const SEED_DIETA = {
+  objetivoAtual: "perda",
+  objetivos:{
+    perda:{ nome:"Perda de peso", desc:"Déficit calórico com proteína alta (35%) pra perder gordura preservando músculo, ~0,7%/semana.", niveis:{
+      descanso:{ nome:"Sem atividade", kcal:1500, p:131, f:42, c:150, desc:"Dias sem nenhum treino." },
+      uma:{ nome:"1 atividade", kcal:1750, p:153, f:49, c:175, desc:"Um treino no dia." },
+      duas:{ nome:"2 atividades", kcal:2000, p:175, f:56, c:200, desc:"Dois treinos no dia." },
+      tres:{ nome:"3 atividades", kcal:2200, p:193, f:61, c:220, desc:"Três treinos no dia." },
+    }},
+    manutencao:{ nome:"Manutenção", desc:"Sem déficit nem superávit — macros equilibrados (25% proteína / 30% gordura / 45% carbo).", niveis:{
+      descanso:{ nome:"Sem atividade", kcal:1850, p:116, f:62, c:208, desc:"Dias sem nenhum treino." },
+      uma:{ nome:"1 atividade", kcal:2100, p:131, f:70, c:236, desc:"Um treino no dia." },
+      duas:{ nome:"2 atividades", kcal:2350, p:147, f:78, c:264, desc:"Dois treinos no dia." },
+      tres:{ nome:"3 atividades", kcal:2550, p:159, f:85, c:287, desc:"Três treinos no dia." },
+    }},
+    ganho:{ nome:"Ganho de massa muscular", desc:"Pequeno superávit, carboidrato mais alto (50%) pra sustentar a intensidade do treino.", niveis:{
+      descanso:{ nome:"Sem atividade", kcal:2000, p:125, f:56, c:250, desc:"Dias sem nenhum treino." },
+      uma:{ nome:"1 atividade", kcal:2250, p:141, f:63, c:281, desc:"Um treino no dia." },
+      duas:{ nome:"2 atividades", kcal:2500, p:156, f:69, c:313, desc:"Dois treinos no dia." },
+      tres:{ nome:"3 atividades", kcal:2700, p:169, f:75, c:338, desc:"Três treinos no dia." },
+    }},
+    detox:{ nome:"Detox", desc:"Foco em comida de verdade, zero açúcar/ultraprocessado — proteína e gordura moderadas (30% cada), carbo de fruta/vegetal.", niveis:{
+      descanso:{ nome:"Sem atividade", kcal:1600, p:120, f:53, c:160, desc:"Dias sem nenhum treino." },
+      uma:{ nome:"1 atividade", kcal:1850, p:139, f:62, c:185, desc:"Um treino no dia." },
+      duas:{ nome:"2 atividades", kcal:2100, p:158, f:70, c:210, desc:"Dois treinos no dia." },
+      tres:{ nome:"3 atividades", kcal:2300, p:173, f:77, c:230, desc:"Três treinos no dia." },
+    }},
+  },
+  refsPorObjetivo:{
+    perda:[
+      ["Café", "3 ovos mexidos + 1 fatia de pão integral + 1 fruta. Proteína alta logo cedo segura a fome do dia."],
+      ["Almoço", "150g de proteína magra (frango, patinho, peixe) + 4 col. de arroz + feijão + salada à vontade com 1 col. de chá de azeite."],
+      ["Pré-treino", "1 fruta + café preto, 40-60 min antes. Leve, só pra ter energia."],
+      ["Pós-treino", "30g de whey + 1 fruta. Janela pra repor sem estourar a meta."],
+      ["Jantar", "150g de peixe ou frango + legumes à vontade + 1/2 batata doce. Carbo menor à noite."],
+      ["Ceia (se bater fome)", "1 pote de iogurte grego natural OU 1 ovo cozido. Proteína, não carbo."],
+    ],
+    manutencao:[
+      ["Café", "2 ovos + 2 fatias de pão integral + 1 fruta + café."],
+      ["Almoço", "130g de proteína + 5 col. de arroz + feijão + salada com azeite."],
+      ["Pré-treino", "1 fruta + 2 col. de aveia, 60 min antes."],
+      ["Pós-treino", "30g de whey + 1 fruta + 1 fatia de pão."],
+      ["Jantar", "130g de proteína + legumes + 1 porção de carbo integral (arroz, batata ou macarrão)."],
+      ["Ceia", "Iogurte natural + 10 castanhas."],
+    ],
+    ganho:[
+      ["Café", "3 ovos + 3 fatias de pão integral + 1 fruta + 1 col. de pasta de amendoim."],
+      ["Lanche da manhã", "Iogurte grego + granola + 1 fruta. Refeição extra pra fechar o superávit."],
+      ["Almoço", "150g de proteína + 6 col. de arroz + feijão + salada com azeite."],
+      ["Pré-treino", "1 fruta + 3 col. de aveia + café, 60 min antes. Carbo é combustível aqui."],
+      ["Pós-treino", "30g de whey + 1 banana + 2 fatias de pão ou 1 batata doce média."],
+      ["Jantar", "150g de proteína + legumes + porção cheia de carbo (arroz, batata ou macarrão)."],
+      ["Ceia", "Iogurte grego + castanhas + 1 col. de mel."],
+    ],
+    detox:[
+      ["Café", "3 ovos mexidos + 1 fruta + chá ou café sem açúcar. Zero pão branco, zero ultraprocessado."],
+      ["Almoço", "150g de proteína grelhada + 1/2 batata doce ou mandioca + salada colorida com azeite e limão."],
+      ["Pré-treino", "1 fruta inteira (não suco) + café preto."],
+      ["Pós-treino", "Ovos ou whey sem aditivo + 1 fruta."],
+      ["Jantar", "Peixe ou frango + legumes assados ou no vapor + azeite. Sem fritura."],
+      ["Ceia (se bater fome)", "Chá + castanhas OU iogurte natural integral sem açúcar."],
+    ],
+  },
+  refs:[
+    ["Café", "Ovos ou whey + fruta + fonte de carbo integral."],
+    ["Almoço", "Proteína magra + arroz ou tubérculo + feijão + salada com azeite."],
+    ["Pré-treino", "Fruta + café, 40-60 min antes."],
+    ["Pós-treino", "Proteína magra + carbo de rápida absorção."],
+    ["Jantar", "Peixe ou frango + legumes + carbo integral."],
+    ["Ceia (se bater fome)", "Iogurte natural + castanhas."],
+  ],
+  dicasAcucar:[
+    "Doce não sai da vida, sai do impulso: decide antes e encaixa nos carboidratos do dia.",
+    "Nos dias de fome de doce mais forte, prioriza fruta ou iogurte com mel antes de industrializado.",
+    "Café da manhã e almoço com proteína e fibra suficientes cortam boa parte da vontade de doce à tarde.",
+    "Guarda o doce planejado pro pós-treino.",
+  ],
+};
+
+const SEED_CICLO = { ultimaMenstruacao:"", duracaoCiclo:28, duracaoMenstruacao:5 };
+const SEED_FASE = { valor:"normal" };
+const SEED_KCAL_BASE = { musc:200, aron:450 };
+const SEED_CONTATO = { whatsapp:"", nomeCoach:"Júlio Oliveira", instagram:"@julio_personal",
+  nomeAluno:"Elaine", bonificacao:"100",
+  textoIndicacao:"Oi! Estou treinando com o coach Júlio Oliveira (CT40) e tenho um app de treino feito só pra mim — treino, dieta e acompanhamento completo. Se você quer um assim também, fala com ele. É só clicar no link abaixo que a mensagem já vai pronta:" };
+const SEED_TESTES = { categorias:[
+  {id:uid(), nome:"Equilíbrio", testes:[
+    {id:uid(), nome:"Apoio unipodal olhos fechados", protocolo:"Descalça, mãos na cintura, apoio em uma perna, olhos fechados. Cronometrar até perder o equilíbrio (encostar o outro pé ou abrir os olhos). 2 tentativas por lado, considerar a melhor.", unidade:"segundos"},
+  ]},
+  {id:uid(), nome:"Coordenação", testes:[
+    {id:uid(), nome:"Illinois Agility Test", protocolo:"Teste validado de agilidade: percurso de 10m × 5m com 4 cones centrais em zigue-zague, deitada no início, cronômetro dispara ao levantar. Percorrer o trajeto completo (ida, zigue-zague, volta) o mais rápido possível. 2 tentativas, considerar a melhor.", unidade:"segundos"},
+  ]},
+  {id:uid(), nome:"Potência", testes:[
+    {id:uid(), nome:"Salto vertical (Countermovement Jump)", protocolo:"Teste validado de potência de membros inferiores. Mãos na cintura, agachar rápido e saltar o mais alto possível (contramovimento livre), aterrissar controlada. Medir a altura do salto (fita na parede, tapete de contato ou app de salto). 3 tentativas, considerar a melhor.", unidade:"cm"},
+  ]},
+  {id:uid(), nome:"Força", testes:[
+    {id:uid(), nome:"Agachamento — 1RM estimado", protocolo:"Carga submáxima (65-80% de uma estimativa inicial), repetições até a falha técnica (sem perder padrão de movimento). Estimar 1RM pela fórmula de Epley: 1RM = carga × (1 + repetições/30).", unidade:"kg (1RM est.)"},
+    {id:uid(), nome:"Desenvolvimento — 1RM estimado", protocolo:"Mesmo protocolo do agachamento: carga submáxima até a falha técnica, estimar por Epley.", unidade:"kg (1RM est.)"},
+    {id:uid(), nome:"Levantamento terra — 1RM estimado", protocolo:"Mesmo protocolo: carga submáxima até a falha técnica, estimar por Epley. Atenção redobrada à coluna neutra — se a lombar fletir, a série encerrou ali.", unidade:"kg (1RM est.)"},
+  ]},
+  {id:uid(), nome:"Lateralidade específica", testes:[
+    {id:uid(), nome:"Single Leg Hop Test (salto horizontal unipodal)", protocolo:"Teste validado de simetria entre membros (usado em avaliação de retorno ao esporte). Apoio em uma perna, salto horizontal máximo controlado, aterrissagem estável por 2s na mesma perna. Medir a distância. Fazer nos dois lados — Índice de Simetria = (perna mais fraca ÷ perna mais forte) × 100; abaixo de 85-90% é sinal de atenção.", unidade:"cm (E / D)"},
+  ]},
+  {id:uid(), nome:"Velocidade", testes:[
+    {id:uid(), nome:"Sprint 20m", protocolo:"Saída parada, cronometrar 20m em esforço máximo. 2 tentativas, considerar a melhor.", unidade:"segundos"},
+  ]},
+  {id:uid(), nome:"Capacidade aeróbia", testes:[
+    {id:uid(), nome:"Remo 2000m", protocolo:"2000m no remo ergômetro em esforço máximo sustentável, cronometrado. Registrar tempo total e a potência média (watts) mostrada no monitor ao final — usar como referência de VO2/condicionamento a cada reavaliação.", unidade:"min:seg + watts médios"},
+    {id:uid(), nome:"Teste de Cooper (corrida 12 min)", protocolo:"Teste validado (Cooper, 1968). Correr a maior distância possível em 12 minutos, ritmo próprio, em pista ou esteira. Registrar a distância — estimativa de VO2máx pela fórmula de Cooper: VO2máx (ml/kg/min) = (distância em metros − 504,9) / 44,73.", unidade:"metros"},
+  ]},
+]};
+
+const FASES_CIRURGIA = {
+  normal:{ rot:"Rotina normal", cor:T.ok, desc:"Sem restrição médica em vigor. Treino completo: Protocolo 40 + superior/posterior + cardio." },
+  pos:{ rot:"Pós-cirurgia · sem braço", cor:T.warn, desc:"Membro superior sai do plano (cadeia posterior de quinta segue normalmente, é trabalho de perna). No cardio, remo sai — fica bike, corrida e caminhada inclinada. Protocolo 40 de seg/qua/sex segue normalmente." },
+};
+const SEMAFORO = {
+  verde:{ rot:"Verde", cor:T.ok, fator:1, crit:"Sem dor em repouso, sem sintoma abaixo do joelho ou do cotovelo.", acao:"Plano do dia completo, carga normal." },
+  amarelo:{ rot:"Amarelo", cor:T.warn, fator:0.8, crit:"Dor até 3/10, rigidez matinal na lombar.", acao:"Reduz a carga em ~20% e tira 1 série de cada exercício. Mantém o cardio contínuo, corta o intervalado forte." },
+  vermelho:{ rot:"Vermelho", cor:T.stop, fator:0.5, crit:"Dor acima de 4/10, formigamento ou choque.", acao:"Treino paralelo — não é dia de zerar. Carga em ~50%, amplitude confortável, sem dor. Cardio vira caminhada leve. Avisa o coach." },
+};
+const FASE_CICLO_INFO = {
+  menstrual:{ nome:"Menstrual", cor:T.stop, txt:"Percepção de esforço tende a ficar mais alta. Mantém o plano, mas ouve o corpo — reduzir 1 nível de intensidade no cardio intervalado é uma opção válida, não uma desculpa." },
+  folicular:{ nome:"Folicular", cor:T.ok, txt:"Janela de melhor recuperação e força crescente. Bom momento pra empurrar carga na musculação e intensidade no cardio." },
+  ovulatoria:{ nome:"Ovulatória", cor:T.warn, txt:"Pico de força/potência pra muita gente, mas com mais frouxidão ligamentar. Atenção redobrada à técnica em exercícios de impacto e mudança de direção — é o momento de maior risco de entorse." },
+  lutea:{ nome:"Lútea", cor:T.warn, txt:"Temperatura corporal mais alta, RPE percebido maior pro mesmo esforço real. Prioriza sono e carboidrato ao redor do treino; se o RPE bater 2 pontos acima do previsto, encerra sem culpa." },
+};
+function faseCiclo(cfg){
+  if(!cfg || !cfg.ultimaMenstruacao) return null;
+  const dur = Number(cfg.duracaoCiclo)||28, durM = Number(cfg.duracaoMenstruacao)||5;
+  const ini = new Date(cfg.ultimaMenstruacao+"T00:00:00");
+  const hoje = new Date(hojeStr()+"T00:00:00");
+  const diff = Math.floor((hoje-ini)/864e5);
+  if(diff<0) return null;
+  const diaCiclo = (diff % dur) + 1;
+  const ovulacao = dur - 14;
+  if(diaCiclo <= durM) return {chave:"menstrual", dia:diaCiclo};
+  if(diaCiclo >= ovulacao-1 && diaCiclo <= ovulacao+1) return {chave:"ovulatoria", dia:diaCiclo};
+  if(diaCiclo < ovulacao-1) return {chave:"folicular", dia:diaCiclo};
+  return {chave:"lutea", dia:diaCiclo};
+}
+function projetarSemanas(pesoAtual, metaKg, taxa){
+  let p = pesoAtual; const alvo = pesoAtual - metaKg; let semanas = 0; const marcos = [];
+  while(p > alvo && semanas < 60){ p = p - p*(taxa/100); semanas++; if(semanas%4===0) marcos.push({semana:semanas, peso:Math.round(p*10)/10}); }
+  return { semanas, marcos, pesoFinal: Math.round(p*10)/10 };
+}
+
+/* ========= HOOKS de armazenamento ========= */
+function useDoc(db, path, seed){
+  const [data,setData] = useState(seed);
+  const [ready,setReady] = useState(!db);
+  useEffect(()=>{
+    if(!db) return;
+    const ref = db.doc(path);
+    let seeded = false;
+    const unsub = ref.onSnapshot(
+      (snap)=>{
+        if(snap.exists){ setData(snap.data()); setReady(true); }
+        else if(!seeded){ seeded = true; ref.set(seed).catch(()=>{}); }
+      },
+      ()=>{ setData(seed); setReady(true); }
+    );
+    return ()=>unsub();
+  }, [db, path]);
+  const save = (next)=>{ setData(next); if(db){ db.doc(path).set(next).catch(()=>{}); } };
+  return [data, save, ready];
+}
+function useCollection(db, path, orderField, dir, lim){
+  const [items,setItems] = useState([]);
+  useEffect(()=>{
+    if(!db) return;
+    let q = db.collection(path);
+    if(orderField) q = q.orderBy(orderField, dir||"asc");
+    if(lim) q = q.limit(lim);
+    const unsub = q.onSnapshot(
+      (snap)=>{ setItems(snap.docs.map(d=>({id:d.id, ...d.data()}))); },
+      ()=>{}
+    );
+    return ()=>unsub();
+  }, [db, path]);
+  return items;
+}
+
+/* ========= PRIMITIVAS DE UI ========= */
+function Chevron({size=12,color=T.gold}){
+  return <svg width={size} height={size} viewBox="0 0 12 12" style={{flexShrink:0}} aria-hidden="true">
+    <path d="M3 1 L8 6 L3 11" fill="none" stroke={color} strokeWidth="1.6"/></svg>;
+}
+function Eyebrow({children,color=T.mute,style}){
+  return <div style={{fontFamily:DISPLAY,fontSize:10,letterSpacing:".22em",textTransform:"uppercase",color,...style}}>{children}</div>;
+}
+function H({children,size=22,color=T.text,style}){
+  return <div style={{fontFamily:DISPLAY,fontWeight:500,fontSize:size,letterSpacing:".08em",textTransform:"uppercase",color,lineHeight:1.15,...style}}>{children}</div>;
+}
+function Panel({children,accent,style}){
+  return <div style={{background:T.panel,borderTop:`1px solid ${accent||T.rule}`,padding:"18px 18px 20px",marginBottom:10,...style}}>{children}</div>;
+}
+function Hair(){ return <div style={{height:1,background:T.rule,margin:"14px 0"}}/>; }
+function Bullets({items,color=T.goldDim}){
+  return <div style={{marginTop:10}}>{items.map((t,i)=>(
+    <div key={i} style={{display:"flex",gap:9,padding:"6px 0",fontSize:13,lineHeight:1.5,color:T.soft}}>
+      <div style={{paddingTop:3}}><Chevron size={10} color={color}/></div><div>{t}</div>
+    </div>))}</div>;
+}
+function SecHead({idx,titulo,meta,right}){
+  return (
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <Eyebrow color={T.gold}>{idx}</Eyebrow>
+        <div style={{flex:1,height:1,background:T.ruleGold}}/>
+      </div>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginTop:8}}>
+        <H size={19}>{titulo}</H>
+        <div style={{display:"flex",alignItems:"baseline",gap:12}}>{meta && <Eyebrow>{meta}</Eyebrow>}{right}</div>
+      </div>
+    </div>
+  );
+}
+const inputStyle = {background:"transparent",border:"none",borderBottom:`1px solid ${T.rule}`,color:T.text,fontFamily:BODY,fontSize:13,padding:"7px 0",width:"100%",outline:"none"};
+const inputGold = {...inputStyle, color:T.gold, fontFamily:DISPLAY, letterSpacing:".04em"};
+function EditToggle({on,setOn}){
+  return (
+    <button onClick={()=>setOn(!on)} style={{background:"transparent",border:`1px solid ${on?T.gold:T.goldDim}`,color:on?T.gold:T.goldDim,cursor:"pointer",
+      fontFamily:DISPLAY,fontSize:10,letterSpacing:".16em",textTransform:"uppercase",padding:"5px 10px"}}>
+      {on?"Concluir edição":"Editar"}
+    </button>
+  );
+}
+function Linha({i,nome,pres,tempo,nota,dim,ultimoLog,onLog}){
+  const [v,setV] = useState("");
+  const salvar = ()=>{ if(!v) return; onLog(nome,v); setV(""); };
+  return (
+    <div style={{padding:"14px 0",borderTop:i===0?"none":`1px solid ${T.rule}`,opacity:dim?.4:1}}>
+      <div style={{display:"flex",gap:12}}>
+        <div style={{fontFamily:DISPLAY,fontSize:11,color:T.goldDim,letterSpacing:".1em",paddingTop:3,minWidth:20}}>{num2(i+1)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline"}}>
+            <div style={{fontSize:14.5,color:T.text,fontWeight:500,lineHeight:1.3}}>{nome}</div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              {pres && <div style={{fontFamily:DISPLAY,fontSize:14,letterSpacing:".06em",color:T.gold,whiteSpace:"nowrap"}}>{pres}</div>}
+              {tempo && <div style={{fontFamily:DISPLAY,fontSize:11.5,letterSpacing:".06em",color:T.goldDim,whiteSpace:"nowrap"}}>{tempo}</div>}
+            </div>
+          </div>
+          {nota && <div style={{fontSize:12.5,color:T.mute,marginTop:7,lineHeight:1.55}}>{nota}</div>}
+          <a href={yt(nome)} target="_blank" rel="noreferrer"
+             style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:9,fontFamily:DISPLAY,fontSize:10,letterSpacing:".18em",textTransform:"uppercase",color:T.goldDim,textDecoration:"none"}}>
+            Ver execução <Chevron size={9} color={T.goldDim}/>
+          </a>
+          {onLog && (
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}>
+              <input style={{...inputStyle,width:80,fontSize:12.5}} placeholder="carga/tempo" value={v} onChange={e=>setV(e.target.value)}/>
+              <button onClick={salvar} style={{background:"transparent",border:`1px solid ${T.goldDim}`,color:T.gold,cursor:"pointer",
+                fontFamily:DISPLAY,fontSize:10,letterSpacing:".12em",textTransform:"uppercase",padding:"7px 11px"}}>Registrar</button>
+              {ultimoLog && <span style={{fontSize:11,color:T.mute}}>último: {ultimoLog.carga} · {ultimoLog.data}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+/* Lista de exercícios editável — modo leitura vira Linha, modo edição vira inputs */
+function ListaExercicios({items, onSave, editMode, cargasPorExercicio, onLog}){
+  const upd = (idx, field, val)=>{ const n=[...items]; n[idx]={...n[idx],[field]:val}; onSave(n); };
+  const remove = (idx)=>{ const n=items.filter((_,i)=>i!==idx); onSave(n); };
+  const add = ()=> onSave([...items,{id:uid(),nome:"Novo exercício",nota:"",pres:"",tempo:""}]);
+  if(!editMode){
+    return <>{items.map((e,i)=>{
+      const log = cargasPorExercicio && cargasPorExercicio[e.nome];
+      const ultimoLog = log && log.length ? log[log.length-1] : null;
+      return <Linha key={e.id||i} i={i} nome={e.nome} nota={e.nota} pres={e.pres} tempo={e.tempo}
+        onLog={onLog} ultimoLog={ultimoLog}/>;
+    })}</>;
+  }
+  return (
+    <div>
+      {items.map((e,i)=>(
+        <div key={e.id||i} style={{padding:"12px 0",borderTop:i?`1px solid ${T.rule}`:"none"}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <input style={{...inputStyle,fontSize:14,color:T.text}} value={e.nome} onChange={ev=>upd(i,"nome",ev.target.value)} placeholder="Nome do exercício"/>
+            <input style={{...inputGold,width:100,flexShrink:0}} value={e.pres} onChange={ev=>upd(i,"pres",ev.target.value)} placeholder="séries × reps"/>
+            <input style={{...inputStyle,width:70,flexShrink:0}} value={e.tempo||""} onChange={ev=>upd(i,"tempo",ev.target.value)} placeholder="tempo"/>
+            <button onClick={()=>remove(i)} style={{background:"transparent",border:"none",color:T.stop,cursor:"pointer",fontSize:16,padding:"0 4px"}}>×</button>
+          </div>
+          <textarea style={{...inputStyle,marginTop:8,minHeight:36,resize:"vertical"}} value={e.nota} onChange={ev=>upd(i,"nota",ev.target.value)} placeholder="Observação de execução"/>
+        </div>
+      ))}
+      <button onClick={add} style={{marginTop:10,background:"transparent",border:`1px dashed ${T.goldDim}`,color:T.gold,cursor:"pointer",
+        fontFamily:DISPLAY,fontSize:11,letterSpacing:".14em",textTransform:"uppercase",padding:"9px 14px",width:"100%"}}>+ Adicionar exercício</button>
+    </div>
+  );
+}
+/* Modo leitura: intercala exercício principal com o complemento (abdômen/lombar/alongamento), formato circuito */
+function CircuitoView({principais, complementos, cargasPorExercicio, onLog}){
+  if(!complementos || !complementos.length) return <>{principais.map((e,i)=>(
+    <Linha key={e.id||i} i={i} nome={e.nome} nota={e.nota} pres={e.pres} tempo={e.tempo}
+      onLog={onLog} ultimoLog={cargasPorExercicio && cargasPorExercicio[e.nome] ? cargasPorExercicio[e.nome].slice(-1)[0] : null}/>
+  ))}</>;
+  const pares = principais.map((p,i)=>[p, complementos[i%complementos.length]]);
+  return (
+    <div>
+      {pares.map(([p,c],i)=>(
+        <div key={p.id||i} style={{padding:"14px 0",borderTop:i===0?"none":`1px solid ${T.rule}`}}>
+          <div style={{fontFamily:DISPLAY,fontSize:10,letterSpacing:".16em",textTransform:"uppercase",color:T.goldDim,marginBottom:6}}>Par {i+1} · descanso curto entre os dois</div>
+          <Linha i={0} nome={p.nome} nota={p.nota} pres={p.pres} tempo={p.tempo} dim={false}
+            onLog={onLog} ultimoLog={cargasPorExercicio && cargasPorExercicio[p.nome] ? cargasPorExercicio[p.nome].slice(-1)[0] : null}/>
+          <div style={{marginLeft:32,opacity:.85}}>
+            <Linha i={1} nome={c.nome} nota={c.nota} pres={c.pres} tempo={c.tempo}
+              onLog={onLog} ultimoLog={cargasPorExercicio && cargasPorExercicio[c.nome] ? cargasPorExercicio[c.nome].slice(-1)[0] : null}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function CardioBloco({dia, config, editMode, onSave}){
+  const c = config[dia];
+  if(!c) return null;
+  const updC = (field,val)=> onSave({...config,[dia]:{...c,[field]:val}});
+  const updB = (idx,field,val)=>{ const b=[...c.blocos]; b[idx]={...b[idx],[field]:val}; updC("blocos",b); };
+  const addB = ()=> updC("blocos",[...c.blocos,{id:uid(),fase:"Nova fase",duracao:"",rpe:"",fc:""}]);
+  const remB = (idx)=> updC("blocos", c.blocos.filter((_,i)=>i!==idx));
+  return (
+    <Panel accent={T.ruleGold}>
+      {editMode ? (
+        <div>
+          <input style={{...inputStyle,fontSize:13,color:T.gold,fontFamily:DISPLAY}} value={c.sistema} onChange={e=>updC("sistema",e.target.value)} placeholder="Sistema"/>
+          <input style={{...inputStyle,marginTop:8}} value={c.nome} onChange={e=>updC("nome",e.target.value)} placeholder="Nome do treino"/>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <input style={{...inputStyle,width:110}} value={c.duracao} onChange={e=>updC("duracao",e.target.value)} placeholder="Duração"/>
+            <input style={{...inputStyle,width:130}} value={c.kcalTxt} onChange={e=>updC("kcalTxt",e.target.value)} placeholder="kcal (texto)"/>
+            <input type="number" style={{...inputStyle,width:90}} value={c.kcalNum} onChange={e=>updC("kcalNum",Number(e.target.value)||0)} placeholder="kcal (nº)"/>
+          </div>
+          <textarea style={{...inputStyle,marginTop:8,minHeight:44}} value={c.carga} onChange={e=>updC("carga",e.target.value)} placeholder="Orientação de carga/ritmo"/>
+          <Hair/>
+          {c.blocos.map((b,i)=>(
+            <div key={b.id||i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+              <input style={{...inputStyle,flex:2}} value={b.fase} onChange={e=>updB(i,"fase",e.target.value)} placeholder="Fase"/>
+              <input style={{...inputStyle,flex:1}} value={b.duracao} onChange={e=>updB(i,"duracao",e.target.value)} placeholder="Duração"/>
+              <input style={{...inputStyle,flex:1}} value={b.rpe} onChange={e=>updB(i,"rpe",e.target.value)} placeholder="RPE"/>
+              <input style={{...inputStyle,flex:1}} value={b.fc} onChange={e=>updB(i,"fc",e.target.value)} placeholder="%FC"/>
+              <button onClick={()=>remB(i)} style={{background:"transparent",border:"none",color:T.stop,cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+          ))}
+          <button onClick={addB} style={{background:"transparent",border:`1px dashed ${T.goldDim}`,color:T.gold,cursor:"pointer",
+            fontFamily:DISPLAY,fontSize:11,letterSpacing:".14em",textTransform:"uppercase",padding:"9px 14px",width:"100%"}}>+ Adicionar fase</button>
+        </div>
+      ) : (
+        <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+            <Eyebrow color={T.gold}>{c.sistema}</Eyebrow>
+            <Eyebrow>{c.duracao} · {c.kcalTxt}</Eyebrow>
+          </div>
+          <div style={{fontSize:14,color:T.text,marginTop:8}}>{c.nome}</div>
+          <div style={{fontSize:12.5,color:T.mute,marginTop:6,lineHeight:1.55}}>{c.carga}</div>
+          <div style={{marginTop:14}}>
+            <div style={{display:"flex",paddingBottom:7,borderBottom:`1px solid ${T.ruleGold}`}}>
+              {["Fase","Duração","RPE","%FC"].map((h,i)=>(
+                <span key={h} style={{flex:i===0?2:1,fontFamily:DISPLAY,fontSize:9.5,letterSpacing:".18em",textTransform:"uppercase",color:T.goldDim}}>{h}</span>
+              ))}
+            </div>
+            {c.blocos.map((r,i)=>(
+              <div key={r.id||i} style={{display:"flex",padding:"9px 0",borderBottom:`1px solid ${T.rule}`}}>
+                <span style={{flex:2,fontSize:12.5,color:T.text}}>{r.fase}</span>
+                <span style={{flex:1,fontFamily:DISPLAY,fontSize:12.5,color:T.soft}}>{r.duracao}</span>
+                <span style={{flex:1,fontFamily:DISPLAY,fontSize:12.5,color:T.soft}}>{r.rpe}</span>
+                <span style={{flex:1,fontFamily:DISPLAY,fontSize:12.5,color:T.soft}}>{r.fc}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+const DIAS = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"];
+const SEMANA_INFO = {
+  SEG:{tipo:"forca-cardio", label:"Musculação inferior (coach) + Cardio extra A (60min)"},
+  TER:{tipo:"aron-sup", label:"Protocolo 40 (Hyrox) + Membro superior"},
+  QUA:{tipo:"forca-cardio", label:"Musculação inferior (coach) + Cardio extra B (60min)"},
+  QUI:{tipo:"aron-sup", label:"Protocolo 40 (Hyrox) + Cadeia posterior"},
+  SEX:{tipo:"forca-cardio", label:"Musculação inferior (coach) + Cardio extra C (60min)"},
+  SAB:{tipo:"mobilidade", label:"Mobilidade + Core (lombar) — caminhada leve/bike opcional, ou repor treino que faltou"},
+  DOM:{tipo:"alongamento", label:"Alongamento (mín. 30 min)"},
+};
+
+function App(){
+  const [db,setDb] = useState(undefined); // undefined = carregando, null = indisponível
+  const [papel,setPapel] = useState(()=>{ try{ return localStorage.getItem("ct40_papel")||""; }catch(e){ return ""; } });
+  const [tab,setTab] = useState("hoje");
+  const [dia,setDia] = useState(()=>{ const d=new Date().getDay(); return d===0 ? "DOM" : DIAS[d-1]; });
+  const [editMode,setEditMode] = useState(false);
+
+  useEffect(()=>{
+    try{
+      if(!window.firebase){ setDb(null); return; }
+      const app = window.firebase.apps && window.firebase.apps.length ? window.firebase.app() : window.firebase.initializeApp(FIREBASE_CONFIG);
+      const firestoreDb = window.firebase.firestore(app);
+      firestoreDb.settings({ experimentalForceLongPolling: true, useFetchStreams: false, merge: true });
+      setDb(firestoreDb);
+    }catch(e){ setDb(null); }
+  },[]);
+
+  const escolherPapel = (p)=>{ setPapel(p); try{ localStorage.setItem("ct40_papel",p); }catch(e){} };
+
+  const hoje = hojeStr();
+  const autor = papel==="coach" ? "Coach" : "Elaine";
+
+  const [fase, saveFase] = useDoc(db||null, "config/fase", SEED_FASE);
+  const [forca, saveForca] = useDoc(db||null, "config/forca", SEED_FORCA);
+  const [cardio, saveCardio] = useDoc(db||null, "config/cardio", SEED_CARDIO);
+  useEffect(()=>{
+    if(!db || !forca) return;
+    // v3: regenera com variação de exercícios por bloco de mês e progressão semanal (uma vez só)
+    if(!forca.geradoV4){
+      saveForca({ ...SEED_FORCA, geradoV4:true });
+    }
+  }, [db, forca]);
+  useEffect(()=>{
+    if(!db || !cardio) return;
+    // v3: regenera com variação real de modalidade/formato por mês e semana (uma vez só)
+    if(!cardio.geradoV4){
+      saveCardio({ ...SEED_CARDIO, geradoV4:true });
+    }
+  }, [db, cardio]);
+  const [regras] = useDoc(db||null, "config/regras", SEED_REGRAS);
+  const [dieta, saveDieta] = useDoc(db||null, "config/dieta", SEED_DIETA);
+  const [ciclo, saveCiclo] = useDoc(db||null, "config/ciclo", SEED_CICLO);
+  const [kcalBase, saveKcalBase] = useDoc(db||null, "config/kcalBase", SEED_KCAL_BASE);
+  const [porcoes, savePorcoes] = useDoc(db||null, "config/porcoes", SEED_PORCOES);
+  useEffect(()=>{
+    // upgrade: formato antigo (porções) vira tabela de alimentos com quantidade calculada
+    if(db && porcoes && !porcoes.proteina?.alimentos){ savePorcoes(SEED_PORCOES); }
+  }, [db, porcoes]);
+  const [testesBank, saveTestesBank] = useDoc(db||null, "config/testesBank", SEED_TESTES);
+  useEffect(()=>{
+    if(db && testesBank && testesBank.categorias && !testesBank.categorias.some(c=>c.nome==="Potência")){
+      const potencia = SEED_TESTES.categorias.find(c=>c.nome==="Potência");
+      saveTestesBank({categorias:[...testesBank.categorias, potencia]});
+    }
+  }, [db, testesBank]);
+  const [recuperacao, saveRecuperacao] = useDoc(db||null, "config/recuperacao", SEED_RECUPERACAO);
+  const [periodizacao, savePeriodizacao] = useDoc(db||null, "config/periodizacao", SEED_PERIODIZACAO);
+  useEffect(()=>{
+    if(db && periodizacao && periodizacao.mesociclos && periodizacao.mesociclos.some(m=>m.fatorCarga==null)){
+      const corrigidos = periodizacao.mesociclos.map(m=>{
+        if(m.fatorCarga!=null) return m;
+        const seedM = SEED_PERIODIZACAO.mesociclos.find(s=>s.mes===m.mes);
+        return {...m, fatorCarga: seedM ? seedM.fatorCarga : 1};
+      });
+      savePeriodizacao({...periodizacao, mesociclos:corrigidos});
+    }
+  }, [db, periodizacao]);
+  const [contato, saveContato] = useDoc(db||null, "config/contato", SEED_CONTATO);
+
+  const sessoes = useCollection(db||null, "sessoes", "data", "desc", 200);
+  const pesoLog = useCollection(db||null, "peso", "data", "asc", 500);
+  const cargasLog = useCollection(db||null, "cargas", "data", "desc", 500);
+  const testesResultados = useCollection(db||null, "testes_resultados", "data", "desc", 500);
+
+  const sessaoHoje = sessoes.find(s=>s.id===hoje) || {};
+  const pesoAtual = pesoLog.length ? pesoLog[pesoLog.length-1].peso : 74.8;
+  const proj = useMemo(()=>projetarSemanas(pesoAtual, 10, 0.7), [pesoAtual]);
+  const cicloAtual = useMemo(()=>faseCiclo(ciclo), [ciclo]);
+  const mesoAtual = useMemo(()=>mesAtual(periodizacao), [periodizacao]);
+  const semanaAtualNum = useMemo(()=>semanaAtual(periodizacao), [periodizacao]);
+  const feitos = sessoes.filter(s=>s.concluido).length;
+  const semana7 = sessoes.filter(s=>s.concluido && (Date.now()-new Date(s.id).getTime())/864e5<=7).length;
+  const kcalTotalGeral = sessoes.reduce((a,s)=>a+(s.kcal||0),0);
+  const gorduraHojeG = sessaoHoje.kcal ? Math.round(sessaoHoje.kcal*1000/7700) : 0;
+  const gorduraTotalKg = Math.round((kcalTotalGeral/7700)*10)/10;
+  const contagemAtividadesHoje = Object.values(sessaoHoje.atividades||{}).filter(Boolean).length;
+  const tierHoje = ["descanso","uma","duas","tres"][Math.min(contagemAtividadesHoje,3)];
+  const restanteKgGordura = 7700 - ((kcalTotalGeral%7700)||0);
+  const dietaObjetivosPre = (dieta && dieta.objetivos) || SEED_DIETA.objetivos;
+  const dietaObjetivoAtualPre = (dieta && dieta.objetivoAtual && dietaObjetivosPre[dieta.objetivoAtual]) ? dieta.objetivoAtual : "perda";
+  const dietaAtualCfgPre = dietaObjetivosPre[dietaObjetivoAtualPre] || dietaObjetivosPre.perda;
+  const nivelHoje = dietaAtualCfgPre.niveis[tierHoje] || dietaAtualCfgPre.niveis.duas || dietaAtualCfgPre.niveis.descanso;
+  const porcoesGuard = {
+    refeicoes: (porcoes && porcoes.refeicoes) || SEED_PORCOES.refeicoes,
+    proteina: (porcoes && porcoes.proteina && porcoes.proteina.alimentos) ? porcoes.proteina : SEED_PORCOES.proteina,
+    carboidrato: (porcoes && porcoes.carboidrato && porcoes.carboidrato.alimentos) ? porcoes.carboidrato : SEED_PORCOES.carboidrato,
+    gordura: (porcoes && porcoes.gordura && porcoes.gordura.alimentos) ? porcoes.gordura : SEED_PORCOES.gordura,
+  };
+  // meta de cada nutriente do dia e por refeição
+  const metaMacro = { proteina: nivelHoje.p||0, carboidrato: nivelHoje.c||0, gordura: nivelHoje.f||0 };
+  const calcQtd = (alim, macroPorRefeicao)=>{
+    const bruto = macroPorRefeicao / (alim.macroPorUnidade||1);
+    const passo = alim.passo||1;
+    const arred = Math.max(passo, Math.round(bruto/passo)*passo);
+    return Math.round(arred*10)/10;
+  };
+  const refsAtuais = ((dieta && dieta.refsPorObjetivo && dieta.refsPorObjetivo[dietaObjetivoAtualPre])
+    || SEED_DIETA.refsPorObjetivo[dietaObjetivoAtualPre]
+    || (dieta && dieta.refs) || SEED_DIETA.refs);
+  const mesesCardioPre = cardio.meses || SEED_CARDIO.meses;
+  const mesCardioAtualRealObj = mesesCardioPre.find(m=>m.mes===(mesoAtual?mesoAtual.mes:1)) || mesesCardioPre[0];
+  const semanasAtualReal = mesCardioAtualRealObj.semanas || gerarSemanasCardio((mesoAtual?mesoAtual.mes:1)-1);
+  const cardioMesAtualReal = semanasAtualReal.find(s=>s.semana===semanaAtualNum) || semanasAtualReal[0];
+
+  const marcarSemaforo = (k)=>{ if(db) db.collection("sessoes").doc(hoje).set({...sessaoHoje, dia, semaforo:k, autor}).catch(()=>{}); };
+  const setAtividade = (key,val)=>{
+    const atividades = {...(sessaoHoje.atividades||{}), [key]:val};
+    let kcal = 0;
+    if(atividades.musc) kcal += kcalBase.musc;
+    if(atividades.cardio) kcal += (cardioMesAtualReal[dia]?cardioMesAtualReal[dia].kcalNum:0);
+    if(atividades.aron) kcal += kcalBase.aron;
+    if(db) db.collection("sessoes").doc(hoje).set({...sessaoHoje, dia, atividades, kcal, autor, concluido: Object.values(atividades).some(Boolean)}).catch(()=>{});
+  };
+  const salvarNota = (v)=>{ if(db) db.collection("sessoes").doc(hoje).set({...sessaoHoje, dia, nota:v, autor}).catch(()=>{}); };
+  const salvarPse = (v)=>{ if(db) db.collection("sessoes").doc(hoje).set({...sessaoHoje, dia, pse:v, autor}).catch(()=>{}); };
+  const [pesoInput,setPesoInput] = useState("");
+  const addPeso = ()=>{ if(!Number(pesoInput)||!db) return; db.collection("peso").doc(hoje).set({peso:Number(pesoInput), data:hoje}).catch(()=>{}); setPesoInput(""); };
+
+  const [cargaExercicio,setCargaExercicio] = useState("");
+  const [cargaValor,setCargaValor] = useState("");
+  const addCarga = ()=>{
+    if(!cargaExercicio || !Number(cargaValor) || !db) return;
+    db.collection("cargas").add({data:hoje, exercicio:cargaExercicio, carga:Number(cargaValor), autor}).catch(()=>{});
+    setCargaValor("");
+  };
+  const logInline = (nome, valor)=>{
+    if(!valor || !db) return;
+    const num = Number(valor);
+    db.collection("cargas").add({data:hoje, exercicio:nome, carga: isNaN(num)?valor:num, autor}).catch(()=>{});
+  };
+
+  const indicarAmigo = ()=>{
+    const c = contato || SEED_CONTATO;
+    const quem = c.nomeAluno || SEED_CONTATO.nomeAluno;
+    const wa = c.whatsapp ? c.whatsapp.replace(/\D/g,"") : "";
+    // a mensagem que o AMIGO manda pro coach já vem assinada com quem indicou
+    const msgDoAmigo = `Oi ${c.nomeCoach || "Júlio"}! Fui indicado(a) por ${quem}. Quero um app de treino personalizado como o dela.`;
+    const linhas = [
+      c.textoIndicacao || SEED_CONTATO.textoIndicacao,
+      "",
+      `Coach: ${c.nomeCoach || "Júlio Oliveira"} — CT40`,
+      wa ? `WhatsApp (já vai com meu nome): https://wa.me/${wa}?text=${encodeURIComponent(msgDoAmigo)}` : "",
+      c.instagram ? `Instagram: ${c.instagram}` : "",
+    ].filter(Boolean);
+    const txt = linhas.join("\n");
+    if(navigator.share) navigator.share({title:"CT40 — treino personalizado", text:txt}).catch(()=>{});
+    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); alert("Mensagem copiada! Cole no WhatsApp do seu amigo."); }
+    else alert(txt);
+  };
+  const salvarAvaliacao = (nota)=>{ if(db) db.collection("sessoes").doc(hoje).set({...sessaoHoje, dia, avaliacao:nota, autor}).catch(()=>{}); };
+  const avaliacoes = sessoes.filter(s=>s.avaliacao);
+  const mediaAvaliacao = avaliacoes.length ? Math.round((avaliacoes.reduce((a,s)=>a+s.avaliacao,0)/avaliacoes.length)*10)/10 : null;
+
+  const enviar = ()=>{
+    const s = sessaoHoje.semaforo ? `\nSemáforo lombar: ${SEMAFORO[sessaoHoje.semaforo].rot}` : "";
+    const p = sessaoHoje.pse ? `\nPSE: ${sessaoHoje.pse}/10` : "";
+    const n = sessaoHoje.nota ? `\nObs: ${sessaoHoje.nota}` : "";
+    const av = sessaoHoje.avaliacao ? `\nAvaliação do treino: ${sessaoHoje.avaliacao}/5` : "";
+    const k = sessaoHoje.kcal ? `\nKcal estimado hoje: ${sessaoHoje.kcal} (~${gorduraHojeG}g de gordura)` : "";
+    const g = `\nGordura estimada acumulada: ${gorduraTotalKg} kg (base: 7700kcal = 1kg)`;
+    const txt = `CT40 · Registro — Elaine\n${dia} · ${SEMANA_INFO[dia]?SEMANA_INFO[dia].label:""}${s}${p}${av}${k}${g}\nSessões 7d ${semana7} · total ${feitos}${n}`;
+    const wa = contato && contato.whatsapp ? contato.whatsapp.replace(/\D/g,"") : "";
+    if(wa){ window.open(`https://wa.me/${wa}?text=${encodeURIComponent(txt)}`,"_blank"); }
+    else if(navigator.share) navigator.share({title:"CT40 — Elaine", text:txt}).catch(()=>{});
+    else if(navigator.clipboard){ navigator.clipboard.writeText(txt); alert("Copiado. Cole no WhatsApp do coach."); }
+    else alert(txt);
+  };
+  const RPE_RECOM = [
+    {max:4, cor:T.ok, txt:"PSE baixa — sessão folgada. Pode ser dia de progredir carga/ritmo na próxima sessão equivalente."},
+    {max:6, cor:T.soft, txt:"PSE moderada — esforço adequado. Mantém a carga atual na próxima sessão equivalente."},
+    {max:8, cor:T.warn, txt:"PSE alta — esforço puxado. Reduz levemente a carga ou o ritmo na próxima sessão equivalente e prioriza sono/recuperação hoje."},
+    {max:10, cor:T.stop, txt:"PSE muito alta — sinal de fadiga acumulada. Reduz volume na próxima sessão e avisa o coach se isso se repetir."},
+  ];
+  const recomPse = sessaoHoje.pse ? RPE_RECOM.find(r=>Number(sessaoHoje.pse)<=r.max) : null;
+
+  const NAV = [["hoje","Hoje"],["cardio","Cardio"],["forca","Força"],["dieta","Dieta"],["relatorio","Relatório"],["testes","Testes"]];
+  const btnDia = (d)=>({
+    flex:1,padding:"10px 0",background:"transparent",border:"none",cursor:"pointer",
+    fontFamily:DISPLAY,fontSize:12,letterSpacing:".16em",textTransform:"uppercase",
+    color:dia===d?T.gold:T.mute,borderBottom:`2px solid ${dia===d?T.gold:T.rule}`
+  });
+
+  // agrupa cargas por exercício, ordenado por data (asc) pra pegar primeiro/último
+  const cargasPorExercicio = useMemo(()=>{
+    const g = {};
+    [...cargasLog].sort((a,b)=>a.data.localeCompare(b.data)).forEach(c=>{
+      if(!g[c.exercicio]) g[c.exercicio]=[];
+      g[c.exercicio].push(c);
+    });
+    return g;
+  },[cargasLog]);
+
+  const kcalUltimos = (dias)=>{
+    const limite = Date.now()-dias*864e5;
+    return sessoes.filter(s=>new Date(s.id).getTime()>=limite).reduce((a,s)=>a+(s.kcal||0),0);
+  };
+
+  // guarda contra doc antigo (schema pré-meses) pra nunca quebrar a aba Força
+  const mesesForca = forca.meses || SEED_FORCA.meses;
+  const [mesForcaSel, setMesForcaSel] = useState(null);
+  const mesForcaAtivo = mesForcaSel || (mesoAtual ? mesoAtual.mes : 1);
+  const forcaMesObj = mesesForca.find(m=>m.mes===mesForcaAtivo) || mesesForca[0];
+  const semanasForcaAtivo = forcaMesObj.semanas || gerarForcaMes(mesForcaAtivo-1).semanas;
+  const [semanaForcaSel, setSemanaForcaSel] = useState(null);
+  const semanaForcaAtiva = semanaForcaSel || (mesForcaAtivo===(mesoAtual?mesoAtual.mes:1) ? semanaAtualNum : 1);
+  const forcaSemObj = semanasForcaAtivo.find(s=>s.semana===semanaForcaAtiva) || semanasForcaAtivo[0];
+  const forcaSuperior = forcaSemObj.superior || [];
+  const forcaSuperiorCore = forcaSemObj.superiorCore || [];
+  const forcaPosterior = forcaSemObj.posterior || [];
+  const forcaPosteriorCore = forcaSemObj.posteriorCore || [];
+  const saveForcaMes = (patch)=>{
+    const novasSemanas = semanasForcaAtivo.map(s=>s.semana===semanaForcaAtiva?{...s,...patch}:s);
+    const novos = mesesForca.map(m=>m.mes===mesForcaAtivo?{...m,semanas:novasSemanas}:m);
+    saveForca({...forca, meses:novos});
+  };
+  const mesesCardio = mesesCardioPre;
+  const [mesCardioSel, setMesCardioSel] = useState(null);
+  const mesCardioAtivo = mesCardioSel || (mesoAtual ? mesoAtual.mes : 1);
+  const mesCardioObjBruto = mesesCardio.find(m=>m.mes===mesCardioAtivo) || mesesCardio[0];
+  const semanasCardioAtivo = mesCardioObjBruto.semanas || gerarSemanasCardio(mesCardioAtivo-1);
+  const [semanaCardioSel, setSemanaCardioSel] = useState(null);
+  const semanaCardioAtiva = semanaCardioSel || (mesCardioAtivo===(mesoAtual?mesoAtual.mes:1) ? semanaAtualNum : 1);
+  const cardioMesObj = semanasCardioAtivo.find(s=>s.semana===semanaCardioAtiva) || semanasCardioAtivo[0];
+  const saveCardioMes = (novoConfig)=>{
+    const novasSemanas = semanasCardioAtivo.map(s=>s.semana===semanaCardioAtiva?{semana:semanaCardioAtiva,...novoConfig}:s);
+    const novosMeses = mesesCardio.map(m=>m.mes===mesCardioAtivo?{mes:mesCardioAtivo,semanas:novasSemanas}:m);
+    saveCardio({...cardio, meses:novosMeses});
+  };
+  const todosExercicios = [...forcaSuperior,...forcaPosterior].map(e=>e.nome);
+  const semaforoFator = sessaoHoje.semaforo ? SEMAFORO[sessaoHoje.semaforo].fator : 1;
+  const ultimaCargaExercicio = cargaExercicio && cargasPorExercicio[cargaExercicio] && cargasPorExercicio[cargaExercicio].length
+    ? cargasPorExercicio[cargaExercicio][cargasPorExercicio[cargaExercicio].length-1].carga : null;
+  const sugestaoCarga = ultimaCargaExercicio!=null ? Math.round(ultimaCargaExercicio*semaforoFator*10)/10 : null;
+
+  // guarda contra doc antigo (schema pré-objetivos) pra nunca quebrar a aba Dieta
+  const dietaObjetivos = dietaObjetivosPre, dietaObjetivoAtual = dietaObjetivoAtualPre, dietaAtualCfg = dietaAtualCfgPre;
+  useEffect(()=>{
+    if(!db || !dieta) return;
+    if(!dieta.objetivos){
+      const legacyNiveis = dieta.niveis;
+      saveDieta({
+        objetivoAtual:"perda",
+        objetivos:{...SEED_DIETA.objetivos, perda:{...SEED_DIETA.objetivos.perda, niveis: legacyNiveis || SEED_DIETA.objetivos.perda.niveis}},
+        refs: dieta.refs || SEED_DIETA.refs,
+        dicasAcucar: dieta.dicasAcucar || SEED_DIETA.dicasAcucar,
+      });
+      return;
+    }
+    const faltaTres = Object.keys(dieta.objetivos).some(k=>!dieta.objetivos[k].niveis.tres);
+    if(faltaTres){
+      const objetivosCompletos = {};
+      Object.keys(dieta.objetivos).forEach(k=>{
+        const seedK = SEED_DIETA.objetivos[k] || SEED_DIETA.objetivos.perda;
+        objetivosCompletos[k] = {...dieta.objetivos[k], niveis:{...dieta.objetivos[k].niveis, tres: dieta.objetivos[k].niveis.tres || seedK.niveis.tres}};
+      });
+      saveDieta({...dieta, objetivos:objetivosCompletos});
+      return;
+    }
+    if(!dieta.macrosV2 || !dieta.refsPorObjetivo){
+      // upgrade único: macros por proporção correta + cardápio específico de cada objetivo
+      const objetivosNovos = {};
+      Object.keys(dieta.objetivos).forEach(k=>{
+        const seedK = SEED_DIETA.objetivos[k] || SEED_DIETA.objetivos.perda;
+        objetivosNovos[k] = {...dieta.objetivos[k], niveis: seedK.niveis, desc: seedK.desc};
+      });
+      saveDieta({...dieta, objetivos:objetivosNovos, refsPorObjetivo: SEED_DIETA.refsPorObjetivo, macrosV2:true});
+    }
+  }, [db, dieta]);
+
+  if(!papel){
+    return (
+      <div style={{fontFamily:BODY,background:T.bg,color:T.text,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+        <div style={{maxWidth:340,width:"100%",textAlign:"center"}}>
+          <div style={{fontFamily:DISPLAY,fontSize:12,letterSpacing:".3em",color:T.goldDim,marginBottom:8}}>CT40 · ELAINE</div>
+          <div style={{fontFamily:DISPLAY,fontSize:20,marginBottom:28}}>Quem está entrando?</div>
+          <button onClick={()=>escolherPapel("coach")}
+            style={{width:"100%",marginBottom:12,background:T.gold,border:"none",color:"#050505",cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:13,letterSpacing:".18em",textTransform:"uppercase",padding:"16px"}}>
+            Sou o coach
+          </button>
+          <button onClick={()=>escolherPapel("elaine")}
+            style={{width:"100%",background:"transparent",border:`1px solid ${T.gold}`,color:T.gold,cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:13,letterSpacing:".18em",textTransform:"uppercase",padding:"16px"}}>
+            Sou a Elaine
+          </button>
+          <div style={{fontSize:11,color:T.mute,marginTop:20,lineHeight:1.5}}>Só precisa escolher uma vez neste aparelho.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{fontFamily:BODY,background:T.bg,color:T.text,minHeight:"100vh",paddingBottom:88}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500&family=Inter:wght@300;400;500&display=swap');`}</style>
+
+      {db===null && (
+        <div style={{background:"#1a1408",borderBottom:`1px solid ${T.ruleGold}`,padding:"10px 16px",fontSize:12,color:T.warn,lineHeight:1.5}}>
+          Armazenamento indisponível neste carregamento — os dados desta sessão podem não estar sendo salvos. Verifica sua internet e recarrega a página.
+        </div>
+      )}
+
+      <div style={{textAlign:"right",padding:"6px 16px 0"}}>
+        <button onClick={()=>escolherPapel("")} style={{background:"transparent",border:"none",color:T.mute,fontSize:10.5,letterSpacing:".08em",cursor:"pointer",fontFamily:DISPLAY,textTransform:"uppercase"}}>
+          {autor} · trocar
+        </button>
+      </div>
+
+      <header style={{position:"relative",overflow:"hidden",padding:"46px 20px 26px",borderBottom:`1px solid ${T.rule}`}}>
+        <svg viewBox="0 0 100 200" preserveAspectRatio="none" aria-hidden="true"
+             style={{position:"absolute",right:-14,top:0,height:"100%",width:130,opacity:.16}}>
+          <path d="M20 20 L78 100 L20 180" fill="none" stroke={T.gold} strokeWidth="26"/>
+        </svg>
+        <div style={{position:"relative",maxWidth:720,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap"}}>
+            <div style={{fontFamily:DISPLAY,fontWeight:500,fontSize:34,letterSpacing:".16em",color:T.gold,lineHeight:1}}>ELAINE</div>
+            <div style={{width:22,height:1,background:T.goldDim}}/>
+            <div style={{fontFamily:DISPLAY,fontSize:12,letterSpacing:".26em",color:T.soft}}>CT40</div>
+          </div>
+          <div style={{fontFamily:DISPLAY,fontSize:10,letterSpacing:".38em",textTransform:"uppercase",color:T.soft,marginTop:10}}>Fitness and Health Coach</div>
+          <div style={{display:"flex",gap:34,marginTop:22,flexWrap:"wrap"}}>
+            {[[num2(semana7),"Sessões · 7 dias"],[num2(feitos),"Total registrado"],[`${pesoAtual} kg`,"Peso atual"]].map(([v,l])=>(
+              <div key={l}>
+                <div style={{fontFamily:DISPLAY,fontWeight:300,fontSize:26,letterSpacing:".06em",color:T.gold,lineHeight:1}}>{v}</div>
+                <Eyebrow style={{marginTop:6}}>{l}</Eyebrow>
+              </div>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <div style={{maxWidth:720,margin:"0 auto",padding:"22px 16px 0"}}>
+
+        {tab==="hoje" && (
+          <section>
+            <button onClick={indicarAmigo}
+              style={{width:"100%",marginBottom:20,background:T.gold,border:"none",color:"#050505",cursor:"pointer",
+                      fontFamily:DISPLAY,fontSize:13,letterSpacing:".2em",textTransform:"uppercase",padding:"17px 14px",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+              <span>Encaminhe para seu amigo</span>
+              <span style={{fontFamily:BODY,fontSize:11.5,letterSpacing:"0",textTransform:"none",opacity:.8}}>
+                {(contato && contato.bonificacao) ? `Fechou contrato? Você ganha R$ ${contato.bonificacao} de bonificação` : "Ele recebe o contato do coach e pede o app dele"}
+              </span>
+            </button>
+            <SecHead idx="01" titulo="Fase do plano"/>
+            <Panel accent={FASES_CIRURGIA[fase.valor].cor}>
+              <div style={{display:"flex"}}>
+                {Object.keys(FASES_CIRURGIA).map((k,i)=>(
+                  <button key={k} onClick={()=>saveFase({valor:k})}
+                    style={{flex:1,background:"transparent",border:"none",cursor:"pointer",padding:"6px 4px 12px",
+                            borderLeft:i?`1px solid ${T.rule}`:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:9}}>
+                    <span style={{width:7,height:7,borderRadius:7,background:fase.valor===k?FASES_CIRURGIA[k].cor:"transparent",border:`1px solid ${fase.valor===k?FASES_CIRURGIA[k].cor:T.mute}`}}/>
+                    <span style={{fontFamily:DISPLAY,fontSize:11,letterSpacing:".16em",textTransform:"uppercase",color:fase.valor===k?FASES_CIRURGIA[k].cor:T.mute}}>{FASES_CIRURGIA[k].rot}</span>
+                  </button>
+                ))}
+              </div>
+              <Hair/>
+              <div style={{fontSize:13,color:T.soft,lineHeight:1.6}}>{FASES_CIRURGIA[fase.valor].desc}</div>
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="01b" titulo="Periodização · macrociclo anual" meta={mesoAtual?`mês ${mesoAtual.mesDoAno} de acompanhamento`:"configurar início"} right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <Panel accent={mesoAtual?MESO_INFO[mesoAtual.tipo].cor:T.rule}>
+              {editMode && (
+                <div style={{marginBottom:14}}>
+                  <Eyebrow>Data de início do acompanhamento</Eyebrow>
+                  <input type="date" style={{...inputGold,width:150,fontFamily:BODY,fontSize:13,color:T.text}} value={periodizacao.inicioPrograma} onChange={e=>savePeriodizacao({...periodizacao,inicioPrograma:e.target.value})}/>
+                </div>
+              )}
+              {!mesoAtual ? (
+                <div style={{fontSize:13,color:T.mute,lineHeight:1.6}}>Defina a data de início acima para o app calcular sozinho em qual mês do macrociclo de 12 meses a Elaine está.</div>
+              ) : (
+                <>
+                  <Eyebrow color={MESO_INFO[mesoAtual.tipo].cor}>Mês {mesoAtual.mes} · {MESO_INFO[mesoAtual.tipo].nome}</Eyebrow>
+                  <div style={{fontFamily:DISPLAY,fontSize:18,color:T.text,marginTop:6}}>{mesoAtual.nome}</div>
+                  <div style={{fontSize:13,color:T.soft,marginTop:8,lineHeight:1.6}}>{mesoAtual.foco}</div>
+                </>
+              )}
+              {editMode && (
+                <>
+                  <Hair/>
+                  <Eyebrow>Editar os 12 mesociclos</Eyebrow>
+                  {periodizacao.mesociclos.map((m,mi)=>{
+                    const upd=(f,v)=>{ const n=[...periodizacao.mesociclos]; n[mi]={...n[mi],[f]:v}; savePeriodizacao({...periodizacao,mesociclos:n}); };
+                    return (
+                      <div key={m.id} style={{padding:"10px 0",borderTop:`1px solid ${T.rule}`}}>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontFamily:DISPLAY,fontSize:11,color:T.goldDim,minWidth:44}}>Mês {m.mes}</span>
+                          <input style={{...inputStyle,flex:1}} value={m.nome} onChange={e=>upd("nome",e.target.value)} placeholder="Nome do mesociclo"/>
+                          <select value={m.tipo} onChange={e=>upd("tipo",e.target.value)} style={{...inputStyle,width:110,background:T.panel}}>
+                            <option value="base">Base</option>
+                            <option value="carga">Carga</option>
+                            <option value="deload">Deload</option>
+                          </select>
+                        </div>
+                        <textarea style={{...inputStyle,marginTop:6,minHeight:36}} value={m.foco} onChange={e=>upd("foco",e.target.value)} placeholder="Foco do mês"/>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="02" titulo="Ciclo menstrual" meta={cicloAtual?`dia ${cicloAtual.dia}`:"configurar"}/>
+            <Panel accent={cicloAtual?FASE_CICLO_INFO[cicloAtual.chave].cor:T.rule}>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                <div>
+                  <Eyebrow>Início da última menstruação</Eyebrow>
+                  <input type="date" style={{...inputGold,width:150,fontFamily:BODY,fontSize:13,color:T.text}} value={ciclo.ultimaMenstruacao} onChange={e=>saveCiclo({...ciclo,ultimaMenstruacao:e.target.value})}/>
+                </div>
+                <div>
+                  <Eyebrow>Duração do ciclo (dias)</Eyebrow>
+                  <input type="number" style={{...inputGold,width:70,fontFamily:BODY,fontSize:13,color:T.text}} value={ciclo.duracaoCiclo} onChange={e=>saveCiclo({...ciclo,duracaoCiclo:Number(e.target.value)||28})}/>
+                </div>
+                <div>
+                  <Eyebrow>Duração da menstruação (dias)</Eyebrow>
+                  <input type="number" style={{...inputGold,width:70,fontFamily:BODY,fontSize:13,color:T.text}} value={ciclo.duracaoMenstruacao} onChange={e=>saveCiclo({...ciclo,duracaoMenstruacao:Number(e.target.value)||5})}/>
+                </div>
+              </div>
+              {cicloAtual && (
+                <>
+                  <Hair/>
+                  <Eyebrow color={FASE_CICLO_INFO[cicloAtual.chave].cor}>Fase atual · {FASE_CICLO_INFO[cicloAtual.chave].nome}</Eyebrow>
+                  <div style={{fontSize:13,color:T.soft,marginTop:8,lineHeight:1.6}}>{FASE_CICLO_INFO[cicloAtual.chave].txt}</div>
+                </>
+              )}
+              <div style={{fontSize:11,color:T.mute,marginTop:12,lineHeight:1.5}}>Estimativa por calendário — orientação geral, não é regra fixa. O que ela sentir de verdade (registrado nas notas) vale mais que a estimativa.</div>
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="03" titulo="Semáforo da lombar" meta="antes de treinar"/>
+            <Panel accent={sessaoHoje.semaforo?SEMAFORO[sessaoHoje.semaforo].cor:T.rule}>
+              <div style={{display:"flex"}}>
+                {Object.keys(SEMAFORO).map((k,i)=>(
+                  <button key={k} onClick={()=>marcarSemaforo(k)}
+                    style={{flex:1,background:"transparent",border:"none",cursor:"pointer",padding:"6px 4px 12px",
+                            borderLeft:i?`1px solid ${T.rule}`:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:9}}>
+                    <span style={{width:7,height:7,borderRadius:7,background:sessaoHoje.semaforo===k?SEMAFORO[k].cor:"transparent",border:`1px solid ${sessaoHoje.semaforo===k?SEMAFORO[k].cor:T.mute}`}}/>
+                    <span style={{fontFamily:DISPLAY,fontSize:11.5,letterSpacing:".2em",textTransform:"uppercase",color:sessaoHoje.semaforo===k?SEMAFORO[k].cor:T.mute}}>{SEMAFORO[k].rot}</span>
+                  </button>
+                ))}
+              </div>
+              <Hair/>
+              {sessaoHoje.semaforo ? (
+                <div style={{fontSize:14,color:T.text,lineHeight:1.55}}>
+                  <span style={{fontFamily:DISPLAY,letterSpacing:".14em",textTransform:"uppercase",fontSize:11,color:SEMAFORO[sessaoHoje.semaforo].cor,marginRight:8}}>Hoje</span>
+                  {SEMAFORO[sessaoHoje.semaforo].acao}
+                </div>
+              ) : (
+                <div>{Object.keys(SEMAFORO).map(k=>(
+                  <div key={k} style={{display:"flex",gap:10,padding:"5px 0",fontSize:12.5,color:T.mute,lineHeight:1.5}}>
+                    <span style={{fontFamily:DISPLAY,fontSize:10.5,letterSpacing:".16em",textTransform:"uppercase",color:SEMAFORO[k].cor,minWidth:66}}>{SEMAFORO[k].rot}</span>
+                    <span>{SEMAFORO[k].crit}</span>
+                  </div>))}
+                </div>
+              )}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="04" titulo="Semana"/>
+            <div style={{display:"flex",marginBottom:14}}>
+              {DIAS.map(d=><button key={d} onClick={()=>setDia(d)} style={btnDia(d)}>{d}</button>)}
+            </div>
+            <Panel>
+              <Eyebrow color={T.gold}>{dia}</Eyebrow>
+              <div style={{fontSize:15,color:T.text,marginTop:6}}>{SEMANA_INFO[dia].label}</div>
+            </Panel>
+            {dia==="SAB" && (
+              <>
+                <Panel accent={T.ruleGold}>
+                  <Eyebrow color={T.gold}>Mobilidade</Eyebrow>
+                  <ListaExercicios items={recuperacao.mobilidade} editMode={editMode} onSave={(v)=>saveRecuperacao({...recuperacao,mobilidade:v})}/>
+                </Panel>
+                <Panel accent={T.ruleGold}>
+                  <Eyebrow color={T.gold}>Core (protocolo Big 3 · Stuart McGill)</Eyebrow>
+                  <ListaExercicios items={recuperacao.core} editMode={editMode} onSave={(v)=>saveRecuperacao({...recuperacao,core:v})}/>
+                </Panel>
+              </>
+            )}
+            {dia==="DOM" && (
+              <Panel accent={T.ruleGold}>
+                <Eyebrow color={T.gold}>Alongamento (mín. 30 min)</Eyebrow>
+                <ListaExercicios items={recuperacao.alongamento} editMode={editMode} onSave={(v)=>saveRecuperacao({...recuperacao,alongamento:v})}/>
+              </Panel>
+            )}
+
+            <div style={{height:18}}/>
+            <SecHead idx="05" titulo="Registro do dia" meta={sessaoHoje.kcal?`${sessaoHoje.kcal} kcal estimado`:null}/>
+            <Panel>
+              <Eyebrow>O que fez hoje</Eyebrow>
+              <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:10}}>
+                {[["musc",`Protocolo 40 · seg/qua/sex (${kcalBase.musc} kcal)`],["cardio",`Cardio extra de ${dia} (${cardioMesAtualReal[dia]?cardioMesAtualReal[dia].kcalNum:0} kcal)`],["aron",`Protocolo 40 · Hyrox ter/qui (${kcalBase.aron} kcal)`]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setAtividade(k, !(sessaoHoje.atividades&&sessaoHoje.atividades[k]))}
+                    style={{display:"flex",alignItems:"center",gap:12,background:"transparent",border:"none",cursor:"pointer",padding:"2px 0",textAlign:"left"}}>
+                    <span style={{width:16,height:16,border:`1px solid ${sessaoHoje.atividades&&sessaoHoje.atividades[k]?T.gold:T.mute}`,background:sessaoHoje.atividades&&sessaoHoje.atividades[k]?T.gold:"transparent",flexShrink:0}}/>
+                    <span style={{fontSize:13.5,color:sessaoHoje.atividades&&sessaoHoje.atividades[k]?T.text:T.soft}}>{l}</span>
+                  </button>
+                ))}
+              </div>
+              {sessaoHoje.kcal>0 && (
+                <div style={{marginTop:14,padding:"10px 12px",background:"#0F0F0D",border:`1px solid ${T.ruleGold}`}}>
+                  <span style={{fontFamily:DISPLAY,fontSize:12.5,color:T.gold}}>{sessaoHoje.kcal} kcal hoje</span>
+                  <span style={{fontSize:12,color:T.mute}}> · ~{gorduraHojeG}g de gordura equivalente · acumulado ≈ {gorduraTotalKg}kg</span>
+                </div>
+              )}
+              <div style={{marginTop:16}}>
+                <Eyebrow>PSE do dia (percepção de esforço, 0-10)</Eyebrow>
+                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+                  {Array.from({length:11},(_,i)=>i).map(n=>(
+                    <button key={n} onClick={()=>salvarPse(n)} style={{width:28,height:28,background:Number(sessaoHoje.pse)===n?T.gold:"transparent",
+                      border:`1px solid ${Number(sessaoHoje.pse)===n?T.gold:T.rule}`,color:Number(sessaoHoje.pse)===n?"#050505":T.mute,cursor:"pointer",
+                      fontFamily:DISPLAY,fontSize:12}}>{n}</button>
+                  ))}
+                </div>
+                {recomPse && <div style={{marginTop:10,fontSize:12.5,color:T.soft,lineHeight:1.55,borderLeft:`2px solid ${recomPse.cor}`,paddingLeft:10}}>{recomPse.txt}</div>}
+              </div>
+              <div style={{marginTop:18}}>
+                <Eyebrow>Gostou do treino de hoje?</Eyebrow>
+                <div style={{display:"flex",gap:8,marginTop:9}}>
+                  {[[1,"Não curti"],[2,"Ok"],[3,"Bom"],[4,"Muito bom"],[5,"Amei"]].map(([n,rot])=>(
+                    <button key={n} onClick={()=>salvarAvaliacao(n)}
+                      style={{flex:1,padding:"10px 2px",background:sessaoHoje.avaliacao===n?T.gold:"transparent",
+                        border:`1px solid ${sessaoHoje.avaliacao===n?T.gold:T.rule}`,color:sessaoHoje.avaliacao===n?"#050505":T.mute,cursor:"pointer",
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                      <span style={{fontFamily:DISPLAY,fontSize:14}}>{n}</span>
+                      <span style={{fontSize:9,letterSpacing:".02em"}}>{rot}</span>
+                    </button>
+                  ))}
+                </div>
+                {mediaAvaliacao!=null && <div style={{marginTop:8,fontSize:11.5,color:T.mute}}>Média das avaliações: {mediaAvaliacao}/5 · {avaliacoes.length} treino(s) avaliado(s)</div>}
+              </div>
+              <textarea placeholder="Como foi? Dor, disposição, fome, sono." value={sessaoHoje.nota||""} onChange={e=>salvarNota(e.target.value)}
+                style={{width:"100%",minHeight:64,marginTop:16,background:"transparent",border:`1px solid ${T.rule}`,color:T.text,fontFamily:BODY,fontSize:13.5,padding:"11px 12px",resize:"vertical",outline:"none"}}/>
+              <button onClick={enviar}
+                style={{width:"100%",marginTop:12,background:"transparent",border:`1px solid ${T.gold}`,color:T.gold,cursor:"pointer",
+                        fontFamily:DISPLAY,fontSize:12,letterSpacing:".24em",textTransform:"uppercase",padding:"14px"}}>
+                {contato && contato.whatsapp ? "Enviar ao coach no WhatsApp" : "Enviar ao coach"}
+              </button>
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="05b" titulo="Falar com o coach" right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <Panel accent={T.ruleGold}>
+              {editMode ? (
+                <div>
+                  <Eyebrow>Número de WhatsApp do coach (com DDI e DDD, só números)</Eyebrow>
+                  <input style={{...inputGold,marginTop:6}} value={contato.whatsapp||""} onChange={e=>saveContato({...contato,whatsapp:e.target.value})} placeholder="Ex: 5521999999999"/>
+                  <div style={{height:12}}/>
+                  <Eyebrow>Nome do coach</Eyebrow>
+                  <input style={{...inputStyle,marginTop:6}} value={contato.nomeCoach||""} onChange={e=>saveContato({...contato,nomeCoach:e.target.value})} placeholder="Júlio Oliveira"/>
+                  <div style={{height:12}}/>
+                  <Eyebrow>Instagram</Eyebrow>
+                  <input style={{...inputStyle,marginTop:6}} value={contato.instagram||""} onChange={e=>saveContato({...contato,instagram:e.target.value})} placeholder="@julio_personal"/>
+                  <div style={{height:12}}/>
+                  <Eyebrow>Nome da aluna (assina a indicação)</Eyebrow>
+                  <input style={{...inputStyle,marginTop:6}} value={contato.nomeAluno||""} onChange={e=>saveContato({...contato,nomeAluno:e.target.value})} placeholder="Elaine"/>
+                  <div style={{height:12}}/>
+                  <Eyebrow>Bonificação por contrato fechado (R$)</Eyebrow>
+                  <input style={{...inputGold,marginTop:6,width:110}} value={contato.bonificacao||""} onChange={e=>saveContato({...contato,bonificacao:e.target.value})} placeholder="100"/>
+                  <div style={{height:12}}/>
+                  <Eyebrow>Texto do botão "encaminhe para seu amigo"</Eyebrow>
+                  <textarea style={{...inputStyle,marginTop:6,minHeight:70}} value={contato.textoIndicacao||""} onChange={e=>saveContato({...contato,textoIndicacao:e.target.value})} placeholder="Mensagem que a Elaine manda pro amigo"/>
+                </div>
+              ) : contato && contato.whatsapp ? (
+                <a href={`https://wa.me/${contato.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer"
+                  style={{display:"block",textAlign:"center",background:"transparent",border:`1px solid ${T.gold}`,color:T.gold,textDecoration:"none",
+                    fontFamily:DISPLAY,fontSize:12,letterSpacing:".2em",textTransform:"uppercase",padding:"13px"}}>
+                  Falar agora no WhatsApp
+                </a>
+              ) : (
+                <div style={{fontSize:12.5,color:T.mute}}>Coach ainda não cadastrou o número — clique em Editar acima.</div>
+              )}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="06" titulo="Regras permanentes"/>
+            <Panel accent={T.ruleGold}><Bullets items={regras.lista}/></Panel>
+          </section>
+        )}
+
+        {tab==="cardio" && (
+          <section>
+            <SecHead idx="01" titulo="Cardio · estilo Hyrox" meta={`seg · qua · sex · mês ${mesCardioAtivo} · semana ${semanaCardioAtiva}/4`} right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <div style={{fontSize:13,color:T.mute,lineHeight:1.6,marginBottom:14}}>
+              Sessão extra de 1h, separada do treino de força com o coach. Três estímulos diferentes na semana: contínuo de base, intervalado forte e contínuo mais longo — com carga subindo semana a semana dentro do mês.
+            </div>
+            <Eyebrow>Mês</Eyebrow>
+            <div style={{display:"flex",gap:6,margin:"6px 0 12px",overflowX:"auto",paddingBottom:4}}>
+              {mesesCardio.map(m=>(
+                <button key={m.mes} onClick={()=>{setMesCardioSel(m.mes); setSemanaCardioSel(null);}}
+                  style={{flexShrink:0,minWidth:34,padding:"7px 0",background:m.mes===mesCardioAtivo?T.gold:"transparent",
+                    border:`1px solid ${m.mes===mesCardioAtivo?T.gold:T.rule}`,color:m.mes===mesCardioAtivo?"#050505":T.mute,cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:11.5}}>{m.mes}{mesoAtual && mesoAtual.mes===m.mes && !mesCardioSel ? "•":""}</button>
+              ))}
+            </div>
+            <Eyebrow>Semana do mês</Eyebrow>
+            <div style={{display:"flex",gap:6,margin:"6px 0 16px"}}>
+              {[1,2,3,4].map(s=>(
+                <button key={s} onClick={()=>setSemanaCardioSel(s)}
+                  style={{flex:1,padding:"7px 0",background:s===semanaCardioAtiva?T.goldDim:"transparent",
+                    border:`1px solid ${s===semanaCardioAtiva?T.goldDim:T.rule}`,color:s===semanaCardioAtiva?"#050505":T.mute,cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:11.5}}>Sem {s}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",marginBottom:18}}>
+              {["SEG","QUA","SEX"].map(d=><button key={d} onClick={()=>setDia(d)} style={btnDia(d)}>{d}</button>)}
+            </div>
+            <CardioBloco dia={["SEG","QUA","SEX"].includes(dia)?dia:"SEG"} config={cardioMesObj} editMode={editMode} onSave={saveCardioMes}/>
+            {fase.valor==="pos" && (
+              <div style={{padding:"14px 16px",borderLeft:`2px solid ${T.warn}`,background:T.panel,marginTop:6}}>
+                <Eyebrow color={T.warn}>Fase pós-cirurgia</Eyebrow>
+                <div style={{fontSize:13,color:T.soft,marginTop:7,lineHeight:1.55}}>Remo fora da rotação — substituído por bike ou corrida.</div>
+              </div>
+            )}
+            {cicloAtual && (cicloAtual.chave==="lutea"||cicloAtual.chave==="menstrual") && (
+              <div style={{padding:"14px 16px",borderLeft:`2px solid ${FASE_CICLO_INFO[cicloAtual.chave].cor}`,background:T.panel,marginTop:12}}>
+                <Eyebrow color={FASE_CICLO_INFO[cicloAtual.chave].cor}>Fase {FASE_CICLO_INFO[cicloAtual.chave].nome.toLowerCase()} do ciclo</Eyebrow>
+                <div style={{fontSize:13,color:T.soft,marginTop:7,lineHeight:1.55}}>{FASE_CICLO_INFO[cicloAtual.chave].txt}</div>
+              </div>
+            )}
+
+            <div style={{height:24}}/>
+            <SecHead idx="02" titulo="Teste de VO2 / capacidade aeróbia"/>
+            <div style={{fontSize:12.5,color:T.mute,lineHeight:1.6,marginBottom:14}}>
+              Usa um dos dois pra acompanhar a evolução do condicionamento a cada reavaliação — remo (Concept2) ou corrida (Cooper). Os mesmos testes também aparecem na aba Testes.
+            </div>
+            {(testesBank.categorias.find(c=>c.nome==="Capacidade aeróbia")?.testes||[]).map(te=>{
+              const resultados = testesResultados.filter(r=>r.testeId===te.id);
+              return (
+                <Panel key={te.id} accent={T.ruleGold}>
+                  <div style={{fontSize:14.5,color:T.text,fontWeight:500}}>{te.nome}</div>
+                  <div style={{fontSize:12.5,color:T.mute,marginTop:6,lineHeight:1.55}}>{te.protocolo}</div>
+                  <RegistroTeste db={db} categoriaId={testesBank.categorias.find(c=>c.nome==="Capacidade aeróbia").id} categoriaNome="Capacidade aeróbia" teste={te} autor={autor} hoje={hoje} resultados={resultados}/>
+                </Panel>
+              );
+            })}
+          </section>
+        )}
+
+        {tab==="forca" && (
+          <section>
+            <Eyebrow>Mês {forcaMesObj.blocoNome?`· ${forcaMesObj.blocoNome}`:""}</Eyebrow>
+            <div style={{display:"flex",gap:6,margin:"6px 0 12px",overflowX:"auto",paddingBottom:4}}>
+              {mesesForca.map(m=>(
+                <button key={m.mes} onClick={()=>{setMesForcaSel(m.mes); setSemanaForcaSel(null);}}
+                  style={{flexShrink:0,minWidth:34,padding:"7px 0",background:m.mes===mesForcaAtivo?T.gold:"transparent",
+                    border:`1px solid ${m.mes===mesForcaAtivo?T.gold:T.rule}`,color:m.mes===mesForcaAtivo?"#050505":T.mute,cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:11.5}}>{m.mes}{mesoAtual && mesoAtual.mes===m.mes && !mesForcaSel ? "•":""}</button>
+              ))}
+            </div>
+            <Eyebrow>Semana do mês</Eyebrow>
+            <div style={{display:"flex",gap:6,margin:"6px 0 14px"}}>
+              {[1,2,3,4].map(s=>(
+                <button key={s} onClick={()=>setSemanaForcaSel(s)}
+                  style={{flex:1,padding:"7px 0",background:s===semanaForcaAtiva?T.goldDim:"transparent",
+                    border:`1px solid ${s===semanaForcaAtiva?T.goldDim:T.rule}`,color:s===semanaForcaAtiva?"#050505":T.mute,cursor:"pointer",
+                    fontFamily:DISPLAY,fontSize:11.5}}>Sem {s}</button>
+              ))}
+            </div>
+            {forcaSemObj.pctCarga!=null && (
+              <div style={{padding:"12px 16px",borderLeft:`2px solid ${T.gold}`,background:T.panel,marginBottom:14}}>
+                <Eyebrow color={T.gold}>Semana {forcaSemObj.semana} · {forcaSemObj.rotulo}</Eyebrow>
+                <div style={{fontSize:12.5,color:T.soft,marginTop:6,lineHeight:1.55}}>
+                  Alvo de carga: ~<b style={{color:T.gold}}>{forcaSemObj.pctCarga}%</b> da carga de referência · descanso {forcaSemObj.descanso} entre pares
+                </div>
+              </div>
+            )}
+            {mesoAtual && mesoAtual.fatorCarga!=null && (
+              <div style={{padding:"14px 16px",borderLeft:`2px solid ${MESO_INFO[mesoAtual.tipo].cor}`,background:T.panel,marginBottom:14}}>
+                <Eyebrow color={MESO_INFO[mesoAtual.tipo].cor}>Mês {mesoAtual.mes} · {mesoAtual.nome} · alvo de carga: {mesoAtual.fatorCarga>=1?"+":""}{Math.round((mesoAtual.fatorCarga-1)*100)}% sobre o mês anterior</Eyebrow>
+              </div>
+            )}
+            {sessaoHoje.semaforo && sessaoHoje.semaforo!=="verde" && (
+              <div style={{padding:"14px 16px",borderLeft:`2px solid ${SEMAFORO[sessaoHoje.semaforo].cor}`,background:T.panel,marginBottom:18}}>
+                <Eyebrow color={SEMAFORO[sessaoHoje.semaforo].cor}>Ajuste automático de hoje · semáforo {SEMAFORO[sessaoHoje.semaforo].rot.toLowerCase()}</Eyebrow>
+                <div style={{fontSize:13,color:T.soft,marginTop:7,lineHeight:1.55}}>{SEMAFORO[sessaoHoje.semaforo].acao}</div>
+              </div>
+            )}
+            <SecHead idx="01" titulo="Membro superior" meta={`ter · mês ${mesForcaAtivo} · sem ${semanaForcaAtiva}`} right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            {fase.valor==="pos" ? (
+              <Panel><div style={{fontSize:13.5,color:T.soft,lineHeight:1.6}}>Fora do plano enquanto a fase pós-cirurgia estiver ativa.</div></Panel>
+            ) : editMode ? (
+              <>
+                <Panel>
+                  <Eyebrow>Braço (principal)</Eyebrow>
+                  <ListaExercicios items={forcaSuperior} editMode={editMode} onSave={(v)=>saveForcaMes({superior:v})} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+                </Panel>
+                <Panel accent={T.ruleGold}>
+                  <Eyebrow>Complementos (abdômen / lombar / alongamento — intercalam com o braço)</Eyebrow>
+                  <ListaExercicios items={forcaSuperiorCore} editMode={editMode} onSave={(v)=>saveForcaMes({superiorCore:v})} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+                </Panel>
+              </>
+            ) : (
+              <Panel>
+                <div style={{fontSize:12,color:T.mute,marginBottom:8,lineHeight:1.55}}>Formato circuito, repouso ativo — descanso curto só entre os pares, não no meio do par. Depois do Hyrox, sessão rápida.</div>
+                <CircuitoView principais={forcaSuperior} complementos={forcaSuperiorCore} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+              </Panel>
+            )}
+
+            <div style={{height:18}}/>
+            <SecHead idx="02" titulo="Cadeia posterior" meta={`qui · mês ${mesForcaAtivo} · sem ${semanaForcaAtiva}`}/>
+            {editMode ? (
+              <>
+                <Panel>
+                  <Eyebrow>Perna (principal)</Eyebrow>
+                  <ListaExercicios items={forcaPosterior} editMode={editMode} onSave={(v)=>saveForcaMes({posterior:v})} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+                </Panel>
+                <Panel accent={T.ruleGold}>
+                  <Eyebrow>Complementos (abdômen / lombar / alongamento — intercalam com a perna)</Eyebrow>
+                  <ListaExercicios items={forcaPosteriorCore} editMode={editMode} onSave={(v)=>saveForcaMes({posteriorCore:v})} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+                </Panel>
+              </>
+            ) : (
+              <Panel>
+                <div style={{fontSize:12,color:T.mute,marginBottom:8,lineHeight:1.55}}>Mesmo formato — perna e complemento intercalados, descanso curto.</div>
+                <CircuitoView principais={forcaPosterior} complementos={forcaPosteriorCore} cargasPorExercicio={cargasPorExercicio} onLog={logInline}/>
+              </Panel>
+            )}
+
+            <div style={{height:18}}/>
+            <SecHead idx="03" titulo="Registrar carga"/>
+            <Panel accent={T.ruleGold}>
+              <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div style={{flex:1,minWidth:180}}>
+                  <Eyebrow>Exercício</Eyebrow>
+                  <input list="lista-ex" style={{...inputStyle}} value={cargaExercicio} onChange={e=>setCargaExercicio(e.target.value)} placeholder="Escreva ou escolha"/>
+                  <datalist id="lista-ex">{todosExercicios.map(n=><option key={n} value={n}/>)}</datalist>
+                </div>
+
+                <div>
+                  <Eyebrow>Carga (kg)</Eyebrow>
+                  <input type="number" style={{...inputGold,width:90}} value={cargaValor} onChange={e=>setCargaValor(e.target.value)}/>
+                </div>
+                <button onClick={addCarga} style={{background:"transparent",border:`1px solid ${T.goldDim}`,color:T.gold,cursor:"pointer",
+                  fontFamily:DISPLAY,fontSize:11,letterSpacing:".16em",textTransform:"uppercase",padding:"10px 16px"}}>Salvar</button>
+              </div>
+              {sugestaoCarga!=null && (
+                <div style={{marginTop:10,fontSize:12,color:T.mute}}>
+                  Última carga: {ultimaCargaExercicio}kg · sugestão de hoje ({sessaoHoje.semaforo?SEMAFORO[sessaoHoje.semaforo].rot.toLowerCase():"sem ajuste"}, {Math.round(semaforoFator*100)}%): <span style={{color:T.gold,fontFamily:DISPLAY}}>{sugestaoCarga}kg</span>
+                </div>
+              )}
+              {cargasLog.slice(0,6).length>0 && (
+                <div style={{marginTop:14}}>
+                  {cargasLog.slice(0,6).map(c=>(
+                    <div key={c.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderTop:`1px solid ${T.rule}`,fontSize:12.5}}>
+                      <span style={{color:T.text}}>{c.exercicio}</span>
+                      <span style={{color:T.mute}}>{c.data} · <span style={{color:T.gold,fontFamily:DISPLAY}}>{c.carga}kg</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </section>
+        )}
+
+        {tab==="dieta" && (
+          <section>
+            <SecHead idx="00" titulo="Recomendação de hoje" meta={`${contagemAtividadesHoje} atividade(s) hoje`}/>
+            <Panel accent={T.gold}>
+              <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+                <div>
+                  <Eyebrow color={T.gold}>Meta de hoje</Eyebrow>
+                  <div style={{fontFamily:DISPLAY,fontSize:22,color:T.gold,marginTop:6}}>{nivelHoje.kcal} kcal</div>
+                  <div style={{fontSize:11,color:T.mute,marginTop:4}}>P{nivelHoje.p} · G{nivelHoje.f} · C{nivelHoje.c}</div>
+                </div>
+                <div>
+                  <Eyebrow>Gasto estimado hoje</Eyebrow>
+                  <div style={{fontFamily:DISPLAY,fontSize:22,color:T.text,marginTop:6}}>{sessaoHoje.kcal||0} kcal</div>
+                  <div style={{fontSize:11,color:T.mute,marginTop:4}}>{gorduraHojeG}g de gordura</div>
+                </div>
+              </div>
+              <Hair/>
+              <div style={{fontSize:12.5,color:T.soft,lineHeight:1.6}}>
+                Baseado em {contagemAtividadesHoje} atividade(s) marcada(s) hoje na aba Hoje, dentro do objetivo <b style={{color:T.gold}}>{dietaAtualCfg.nome}</b>.
+              </div>
+              <div style={{fontSize:12,color:T.mute,marginTop:10,lineHeight:1.6}}>
+                Faltam ≈{restanteKgGordura} kcal de gasto acumulado pra fechar mais 1kg de gordura (acumulado atual: {gorduraTotalKg}kg).
+              </div>
+            </Panel>
+
+            <div style={{height:14}}/>
+            <SecHead idx="00c" titulo="Calculadora de alimentos" right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <Panel accent={T.ruleGold}>
+              <div style={{fontSize:12,color:T.mute,marginBottom:14,lineHeight:1.55}}>
+                Quanto comer de cada alimento pra bater a meta de hoje ({dietaAtualCfg.nome.toLowerCase()}, {contagemAtividadesHoje} atividade(s)). Muda sozinha quando o objetivo ou o número de treinos muda.
+              </div>
+              {["proteina","carboidrato","gordura"].map(cat=>{
+                const p = porcoesGuard[cat];
+                const nRef = porcoesGuard.refeicoes[cat] || 4;
+                const metaDia = metaMacro[cat];
+                const porRef = metaDia / nRef;
+                const updAlim = (idx, campo, val)=>{
+                  const novos = p.alimentos.map((a,i)=>i===idx?{...a,[campo]:val}:a);
+                  savePorcoes({...porcoesGuard, [cat]:{...p, alimentos:novos}});
+                };
+                const addAlim = ()=>savePorcoes({...porcoesGuard, [cat]:{...p, alimentos:[...p.alimentos,{id:uid(),nome:"Novo alimento",unidade:"g",macroPorUnidade:0.2,passo:10}]}});
+                const rmAlim = (idx)=>savePorcoes({...porcoesGuard, [cat]:{...p, alimentos:p.alimentos.filter((_,i)=>i!==idx)}});
+                const updRef = (v)=>savePorcoes({...porcoesGuard, refeicoes:{...porcoesGuard.refeicoes, [cat]:Math.max(1,Number(v)||1)}});
+                return (
+                  <div key={cat} style={{padding:"14px 0",borderTop:cat!=="proteina"?`1px solid ${T.rule}`:"none"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                      <Eyebrow color={T.gold}>{p.nome}</Eyebrow>
+                      <span style={{fontFamily:DISPLAY,fontSize:17,color:T.gold}}>{metaDia}g <span style={{fontSize:11,color:T.mute}}>no dia</span></span>
+                    </div>
+                    <div style={{fontSize:11,color:T.mute,marginTop:4,display:"flex",alignItems:"center",gap:6}}>
+                      dividido em
+                      {editMode
+                        ? <input type="number" style={{...inputStyle,width:46,padding:"3px 6px",fontSize:11}} value={nRef} onChange={e=>updRef(e.target.value)}/>
+                        : <b style={{color:T.soft}}>{nRef}</b>}
+                      refeições ≈ <b style={{color:T.soft}}>{Math.round(porRef)}g por refeição</b>
+                    </div>
+                    <div style={{marginTop:10}}>
+                      {p.alimentos.map((a,i)=>(
+                        <div key={a.id||i} style={{padding:"8px 0",borderTop:i?`1px solid ${T.rule}`:"none"}}>
+                          {editMode ? (
+                            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                              <input style={{...inputStyle,flex:"1 1 130px",fontSize:12.5}} value={a.nome} onChange={e=>updAlim(i,"nome",e.target.value)} placeholder="Alimento"/>
+                              <input style={{...inputStyle,width:96,fontSize:12}} value={a.unidade} onChange={e=>updAlim(i,"unidade",e.target.value)} placeholder="unidade"/>
+                              <input type="number" step="0.01" style={{...inputGold,width:66,fontSize:12}} value={a.macroPorUnidade} onChange={e=>updAlim(i,"macroPorUnidade",Number(e.target.value)||0)} placeholder="g/un"/>
+                              <input type="number" style={{...inputStyle,width:52,fontSize:12}} value={a.passo||1} onChange={e=>updAlim(i,"passo",Number(e.target.value)||1)} placeholder="passo"/>
+                              <button onClick={()=>rmAlim(i)} style={{background:"transparent",border:"none",color:T.stop,cursor:"pointer",fontSize:16}}>×</button>
+                            </div>
+                          ) : (
+                            <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline"}}>
+                              <span style={{fontSize:13.5,color:T.text}}>{a.nome}</span>
+                              <span style={{whiteSpace:"nowrap",textAlign:"right"}}>
+                                <span style={{fontFamily:DISPLAY,fontSize:15,color:T.gold}}>{calcQtd(a,porRef)}</span>
+                                <span style={{fontSize:11,color:T.mute}}> {a.unidade}</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {editMode && (
+                        <button onClick={addAlim} style={{marginTop:10,background:"transparent",border:`1px dashed ${T.goldDim}`,color:T.gold,cursor:"pointer",
+                          fontFamily:DISPLAY,fontSize:10.5,letterSpacing:".14em",textTransform:"uppercase",padding:"8px 12px",width:"100%"}}>+ Adicionar alimento</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:11,color:T.mute,marginTop:14,lineHeight:1.5}}>
+                Cada linha é a quantidade daquele alimento <b>por refeição</b>, se ele for a fonte principal daquele nutriente naquela refeição. Escolha uma fonte por refeição — não some todas.
+                {editMode && " Em edição: 'g/un' é quanto do nutriente o alimento tem por unidade; 'passo' é o arredondamento (1 pra unidades, 10 pra gramas)."}
+              </div>
+            </Panel>
+
+            <div style={{height:14}}/>
+            <SecHead idx="00b" titulo="Objetivo atual"/>
+            <Panel accent={T.ruleGold}>
+              <div style={{display:"flex",flexWrap:"wrap"}}>
+                {Object.keys(dietaObjetivos).map((k,i)=>(
+                  <button key={k} onClick={()=>saveDieta({...dieta,objetivos:dietaObjetivos,objetivoAtual:k})}
+                    style={{flex:"1 1 45%",background:"transparent",border:"none",cursor:"pointer",padding:"8px 6px 12px",
+                            borderLeft:i%2?`1px solid ${T.rule}`:"none",borderTop:i>1?`1px solid ${T.rule}`:"none",
+                            display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                    <span style={{width:7,height:7,borderRadius:7,background:dietaObjetivoAtual===k?T.gold:"transparent",border:`1px solid ${dietaObjetivoAtual===k?T.gold:T.mute}`}}/>
+                    <span style={{fontFamily:DISPLAY,fontSize:11.5,letterSpacing:".08em",textTransform:"uppercase",color:dietaObjetivoAtual===k?T.gold:T.mute,textAlign:"center"}}>{dietaObjetivos[k].nome}</span>
+                  </button>
+                ))}
+              </div>
+              <Hair/>
+              <div style={{fontSize:12.5,color:T.soft,lineHeight:1.6}}>{dietaAtualCfg.desc}</div>
+            </Panel>
+
+            <div style={{height:14}}/>
+            <SecHead idx="01" titulo="Meta calórica do dia" right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <Panel accent={T.ruleGold}>
+              {editMode ? (
+                <div>
+                  {Object.keys(dietaAtualCfg.niveis).map(k=>{
+                    const n = dietaAtualCfg.niveis[k];
+                    const upd=(f,v)=>saveDieta({...dieta,objetivos:{...dietaObjetivos,[dietaObjetivoAtual]:{...dietaAtualCfg,niveis:{...dietaAtualCfg.niveis,[k]:{...n,[f]:v}}}},objetivoAtual:dietaObjetivoAtual});
+                    return (
+                      <div key={k} style={{padding:"10px 0",borderTop:k!=="descanso"?`1px solid ${T.rule}`:"none"}}>
+                        <Eyebrow color={T.gold}>{n.nome}</Eyebrow>
+                        <div style={{display:"flex",gap:10,marginTop:6,flexWrap:"wrap"}}>
+                          <input type="number" style={{...inputStyle,width:80}} value={n.kcal} onChange={e=>upd("kcal",Number(e.target.value)||0)} placeholder="kcal"/>
+                          <input type="number" style={{...inputStyle,width:70}} value={n.p} onChange={e=>upd("p",Number(e.target.value)||0)} placeholder="prot g"/>
+                          <input type="number" style={{...inputStyle,width:70}} value={n.f} onChange={e=>upd("f",Number(e.target.value)||0)} placeholder="gord g"/>
+                          <input type="number" style={{...inputStyle,width:70}} value={n.c} onChange={e=>upd("c",Number(e.target.value)||0)} placeholder="carbo g"/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <Hair/>
+                  <Eyebrow>Gasto estimado — Protocolo 40 seg/qua/sex / Protocolo 40 Hyrox ter/qui (kcal)</Eyebrow>
+                  <div style={{display:"flex",gap:10,marginTop:6}}>
+                    <input type="number" style={{...inputStyle,width:90}} value={kcalBase.musc} onChange={e=>saveKcalBase({...kcalBase,musc:Number(e.target.value)||0})}/>
+                    <input type="number" style={{...inputStyle,width:90}} value={kcalBase.aron} onChange={e=>saveKcalBase({...kcalBase,aron:Number(e.target.value)||0})}/>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"flex",gap:0,flexWrap:"wrap"}}>
+                  {Object.keys(dietaAtualCfg.niveis).map((k,i)=>{
+                    const n=dietaAtualCfg.niveis[k];
+                    return (
+                      <div key={k} style={{flex:"1 1 30%",padding:"6px 10px",borderLeft:i?`1px solid ${T.rule}`:"none"}}>
+                        <Eyebrow color={T.gold}>{n.nome}</Eyebrow>
+                        <div style={{fontFamily:DISPLAY,fontSize:20,color:T.gold,marginTop:6}}>{n.kcal}<span style={{fontSize:11,color:T.mute}}> kcal</span></div>
+                        <div style={{fontSize:11,color:T.mute,marginTop:4}}>P{n.p} · G{n.f} · C{n.c}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{fontSize:11.5,color:T.mute,marginTop:16,lineHeight:1.55}}>Estimativa inicial em cima da avaliação de 14/09. Recalcula a cada 4 semanas junto com o peso.</div>
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="02" titulo="Estrutura do dia" meta={dietaAtualCfg.nome}/>
+            <Panel>
+              <div style={{fontSize:12,color:T.mute,marginBottom:6,lineHeight:1.55}}>Muda automaticamente conforme o objetivo selecionado acima.</div>
+              {refsAtuais.map((m,i)=>(
+                <div key={i} style={{padding:"13px 0",borderTop:`1px solid ${T.rule}`}}>
+                  <div style={{fontSize:14,color:T.text,fontWeight:500}}>{m[0]}</div>
+                  <div style={{fontSize:12.5,color:T.mute,marginTop:4,lineHeight:1.55}}>{m[1]}</div>
+                </div>
+              ))}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="03" titulo="Sobre o açúcar"/>
+            <Panel accent={T.ruleGold}><Bullets items={dieta.dicasAcucar}/></Panel>
+
+            <div style={{padding:"16px 18px",borderTop:`1px solid ${T.rule}`,background:T.panel,marginTop:10}}>
+              <Eyebrow>Aviso</Eyebrow>
+              <div style={{fontSize:12,color:T.mute,marginTop:8,lineHeight:1.6}}>Referência de nutrição esportiva construída pelo coach — não substitui acompanhamento de nutricionista.</div>
+            </div>
+          </section>
+        )}
+
+        {tab==="relatorio" && (
+          <section>
+            <SecHead idx="01" titulo="Meta de peso" meta="0,7% por semana"/>
+            <Panel accent={T.ruleGold}>
+              <Eyebrow>Registrar peso de hoje</Eyebrow>
+              <div style={{display:"flex",gap:14,alignItems:"flex-end",marginTop:8}}>
+                <input type="number" placeholder="kg" value={pesoInput} onChange={e=>setPesoInput(e.target.value)} style={{...inputGold,width:110,fontSize:20}}/>
+                <button onClick={addPeso} style={{background:"transparent",border:`1px solid ${T.goldDim}`,color:T.gold,cursor:"pointer",
+                  fontFamily:DISPLAY,fontSize:11,letterSpacing:".18em",textTransform:"uppercase",padding:"10px 16px"}}>Registrar</button>
+              </div>
+              <Hair/>
+              <div style={{display:"flex",gap:30,flexWrap:"wrap"}}>
+                {[[`${pesoAtual} kg`,"Peso atual"],[`${Math.round((pesoAtual-10)*10)/10} kg`,"Meta (-10kg)"],[`${proj.semanas} sem.`,"Estimativa até a meta"]].map(([v,l])=>(
+                  <div key={l}>
+                    <div style={{fontFamily:DISPLAY,fontWeight:300,fontSize:22,letterSpacing:".04em",color:T.gold,lineHeight:1}}>{v}</div>
+                    <Eyebrow style={{marginTop:7}}>{l}</Eyebrow>
+                  </div>
+                ))}
+              </div>
+              {pesoLog.length>1 && (
+                <div style={{marginTop:16}}>
+                  {pesoLog.slice(-8).reverse().map((p,i,arr)=>{
+                    const prev = arr[i+1];
+                    const delta = prev ? Math.round((p.peso-prev.peso)*10)/10 : null;
+                    return (
+                      <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderTop:`1px solid ${T.rule}`,fontSize:12.5}}>
+                        <span style={{color:T.mute}}>{p.data}</span>
+                        <span style={{color:T.text}}>{p.peso} kg {delta!=null && <span style={{color:delta<=0?T.ok:T.stop,marginLeft:8}}>{delta>0?"+":""}{delta}</span>}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="02" titulo="Gasto calórico estimado"/>
+            <Panel>
+              <div style={{display:"flex",gap:30,flexWrap:"wrap"}}>
+                {[[kcalUltimos(7),"Últimos 7 dias","kcal"],[kcalUltimos(28),"Últimos 28 dias","kcal"],[kcalTotalGeral,"Total geral","kcal"],[`${gorduraTotalKg}`,"Gordura estimada acumulada","kg"]].map(([v,l,u])=>(
+                  <div key={l}>
+                    <div style={{fontFamily:DISPLAY,fontWeight:300,fontSize:22,letterSpacing:".04em",color:T.gold,lineHeight:1}}>{v}</div>
+                    <Eyebrow style={{marginTop:7}}>{l} · {u}</Eyebrow>
+                  </div>
+                ))}
+              </div>
+              <div style={{fontSize:11,color:T.mute,marginTop:14,lineHeight:1.5}}>Somado a partir das atividades marcadas na aba Hoje, usando as estimativas de kcal configuradas na Dieta. Conversão de gordura: 7700 kcal ≈ 1 kg.</div>
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="02b" titulo="Avaliação dos treinos" meta={mediaAvaliacao!=null?`média ${mediaAvaliacao}/5`:"sem avaliação"}/>
+            <Panel accent={T.ruleGold}>
+              {avaliacoes.length===0 ? (
+                <div style={{fontSize:13,color:T.mute,lineHeight:1.6}}>Nenhum treino avaliado ainda — ela avalia na aba Hoje, depois do check-in.</div>
+              ) : (
+                <>
+                  <div style={{display:"flex",gap:24,flexWrap:"wrap",marginBottom:14}}>
+                    <div>
+                      <div style={{fontFamily:DISPLAY,fontWeight:300,fontSize:22,color:T.gold,lineHeight:1}}>{mediaAvaliacao}/5</div>
+                      <Eyebrow style={{marginTop:7}}>Média geral</Eyebrow>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:DISPLAY,fontWeight:300,fontSize:22,color:T.text,lineHeight:1}}>{avaliacoes.length}</div>
+                      <Eyebrow style={{marginTop:7}}>Treinos avaliados</Eyebrow>
+                    </div>
+                  </div>
+                  {avaliacoes.slice(-8).reverse().map(s=>(
+                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderTop:`1px solid ${T.rule}`,fontSize:12.5}}>
+                      <span style={{color:T.text}}>{s.id} · {s.dia||""}</span>
+                      <span style={{color:s.avaliacao<=2?T.warn:T.gold,fontFamily:DISPLAY}}>{s.avaliacao}/5</span>
+                    </div>
+                  ))}
+                  <div style={{fontSize:11,color:T.mute,marginTop:12,lineHeight:1.5}}>Nota 1 ou 2 é sinal pra trocar o estímulo no mês seguinte.</div>
+                </>
+              )}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="03" titulo="Evolução de cargas"/>
+            <Panel>
+              {Object.keys(cargasPorExercicio).length===0 ? (
+                <div style={{fontSize:13,color:T.mute,lineHeight:1.6}}>Nenhuma carga registrada ainda — lance na aba Força.</div>
+              ) : Object.keys(cargasPorExercicio).map((nome,i)=>{
+                const arr = cargasPorExercicio[nome];
+                const first = arr[0], last = arr[arr.length-1];
+                const pct = (typeof first.carga==="number" && typeof last.carga==="number" && first.carga>0) ? Math.round(((last.carga-first.carga)/first.carga)*100) : null;
+                return (
+                  <div key={nome} style={{padding:"13px 0",borderTop:i?`1px solid ${T.rule}`:"none"}}>
+                    <div style={{fontSize:14,color:T.text,fontWeight:500}}>{nome}</div>
+                    <div style={{display:"flex",gap:24,marginTop:8,flexWrap:"wrap"}}>
+                      <div><Eyebrow>Início · {first.data}</Eyebrow><div style={{fontFamily:DISPLAY,fontSize:15,color:T.soft,marginTop:4}}>{first.carga} kg</div></div>
+                      <div><Eyebrow>Atual · {last.data}</Eyebrow><div style={{fontFamily:DISPLAY,fontSize:15,color:T.soft,marginTop:4}}>{last.carga} kg</div></div>
+                      {pct!=null && <div><Eyebrow>Evolução</Eyebrow><div style={{fontFamily:DISPLAY,fontSize:15,marginTop:4,color:pct>=0?T.ok:T.stop}}>{pct>0?"+":""}{pct}%</div></div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </Panel>
+
+            <div style={{height:18}}/>
+            <SecHead idx="04" titulo="Avaliação ISAKmetry" meta="14/09/2026"/>
+            <Panel>
+              {[
+                ["IMC","30,7 kg/m²","Obesidade grau 1 (18,5-24,9 é a faixa saudável)"],
+                ["Massa gorda","21,3 kg · 28,47%",""],
+                ["Massa muscular","26,71 kg","Score-Z 3,05 — bem acima da média"],
+                ["Cintura","87 cm",""], ["Quadril","104,5 cm",""],
+                ["Razão cintura/quadril","0,83","Baixo risco cardiovascular"],
+                ["Razão cintura-estatura","0,56","Acima de 0,50 — indicador de atenção"],
+              ].map((r,i)=>(
+                <div key={i} style={{padding:"13px 0",borderTop:i?`1px solid ${T.rule}`:"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+                    <div style={{fontSize:14,color:T.text,fontWeight:500}}>{r[0]}</div>
+                    <div style={{fontFamily:DISPLAY,fontSize:14,color:T.gold,whiteSpace:"nowrap"}}>{r[1]}</div>
+                  </div>
+                  {r[2] && <div style={{fontSize:12,color:T.mute,marginTop:4,lineHeight:1.5}}>{r[2]}</div>}
+                </div>
+              ))}
+            </Panel>
+          </section>
+        )}
+
+        {tab==="testes" && (
+          <section>
+            <SecHead idx="01" titulo="Avaliação de capacidades físicas" right={<EditToggle on={editMode} setOn={setEditMode}/>}/>
+            <div style={{fontSize:13,color:T.mute,lineHeight:1.6,marginBottom:18}}>
+              Banco de testes por competência — equilíbrio, coordenação, força, lateralidade específica e outras que o coach adicionar. Cada teste guarda protocolo e histórico de resultados.
+            </div>
+            {testesBank.categorias.map((cat,ci)=>{
+              const updCat=(field,val)=>{ const n=[...testesBank.categorias]; n[ci]={...n[ci],[field]:val}; saveTestesBank({categorias:n}); };
+              const addTeste=()=> updCat("testes",[...cat.testes,{id:uid(),nome:"Novo teste",protocolo:"",unidade:""}]);
+              const updTeste=(ti,field,val)=>{ const ts=[...cat.testes]; ts[ti]={...ts[ti],[field]:val}; updCat("testes",ts); };
+              const remTeste=(ti)=> updCat("testes", cat.testes.filter((_,i)=>i!==ti));
+              return (
+                <div key={cat.id} style={{marginBottom:18}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
+                    {editMode ? (
+                      <input style={{...inputStyle,fontFamily:DISPLAY,fontSize:16,color:T.gold,letterSpacing:".06em",textTransform:"uppercase"}} value={cat.nome} onChange={e=>updCat("nome",e.target.value)}/>
+                    ) : <H size={16} color={T.gold}>{cat.nome}</H>}
+                    <div style={{flex:1,height:1,background:T.rule}}/>
+                  </div>
+                  <Panel>
+                    {cat.testes.map((te,ti)=>{
+                      const resultados = testesResultados.filter(r=>r.testeId===te.id);
+                      return (
+                        <div key={te.id} style={{padding:"14px 0",borderTop:ti?`1px solid ${T.rule}`:"none"}}>
+                          {editMode ? (
+                            <div>
+                              <div style={{display:"flex",gap:10}}>
+                                <input style={{...inputStyle}} value={te.nome} onChange={e=>updTeste(ti,"nome",e.target.value)} placeholder="Nome do teste"/>
+                                <input style={{...inputStyle,width:90}} value={te.unidade} onChange={e=>updTeste(ti,"unidade",e.target.value)} placeholder="unidade"/>
+                                <button onClick={()=>remTeste(ti)} style={{background:"transparent",border:"none",color:T.stop,cursor:"pointer",fontSize:16}}>×</button>
+                              </div>
+                              <textarea style={{...inputStyle,marginTop:8,minHeight:44}} value={te.protocolo} onChange={e=>updTeste(ti,"protocolo",e.target.value)} placeholder="Protocolo do teste"/>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{fontSize:14.5,color:T.text,fontWeight:500}}>{te.nome}</div>
+                              {te.protocolo && <div style={{fontSize:12.5,color:T.mute,marginTop:6,lineHeight:1.55}}>{te.protocolo}</div>}
+                            </>
+                          )}
+                          <RegistroTeste db={db} categoriaId={cat.id} categoriaNome={cat.nome} teste={te} autor={autor} hoje={hoje} resultados={resultados}/>
+                        </div>
+                      );
+                    })}
+                    {editMode && (
+                      <button onClick={addTeste} style={{marginTop:10,background:"transparent",border:`1px dashed ${T.goldDim}`,color:T.gold,cursor:"pointer",
+                        fontFamily:DISPLAY,fontSize:11,letterSpacing:".14em",textTransform:"uppercase",padding:"9px 14px",width:"100%"}}>+ Adicionar teste em {cat.nome}</button>
+                    )}
+                  </Panel>
+                </div>
+              );
+            })}
+            {editMode && (
+              <button onClick={()=>saveTestesBank({categorias:[...testesBank.categorias,{id:uid(),nome:"Nova competência",testes:[]}]})}
+                style={{width:"100%",background:"transparent",border:`1px dashed ${T.gold}`,color:T.gold,cursor:"pointer",
+                fontFamily:DISPLAY,fontSize:11.5,letterSpacing:".18em",textTransform:"uppercase",padding:"12px"}}>+ Adicionar competência</button>
+            )}
+          </section>
+        )}
+
+        <div style={{height:30}}/>
+      </div>
+
+      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"#030303",borderTop:`1px solid ${T.rule}`,display:"flex",padding:"0 4px 10px",zIndex:30}}>
+        {NAV.map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)}
+            style={{flex:1,background:"transparent",border:"none",cursor:"pointer",padding:"12px 1px 6px",
+                    borderTop:`2px solid ${tab===k?T.gold:"transparent"}`,marginTop:-1,
+                    fontFamily:DISPLAY,fontSize:9,letterSpacing:".04em",textTransform:"uppercase",
+                    color:tab===k?T.gold:T.mute}}>
+            {l}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+function RegistroTeste({db, categoriaId, categoriaNome, teste, autor, hoje, resultados}){
+  const [valor,setValor] = useState("");
+  const [obs,setObs] = useState("");
+  const salvar = ()=>{
+    if(!valor || !db) return;
+    db.collection("testes_resultados").add({
+      data:hoje, categoriaId, categoriaNome, testeId:teste.id, testeNome:teste.nome,
+      resultado:valor, unidade:teste.unidade, obs, autor
+    }).catch(()=>{});
+    setValor(""); setObs("");
+  };
+  return (
+    <div style={{marginTop:10,paddingLeft:12,borderLeft:`1px solid ${T.ruleGold}`}}>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+        <div>
+          <Eyebrow>Resultado{teste.unidade?` (${teste.unidade})`:""}</Eyebrow>
+          <input style={{...inputGold,width:100}} value={valor} onChange={e=>setValor(e.target.value)}/>
+        </div>
+        <div style={{flex:1,minWidth:140}}>
+          <Eyebrow>Obs.</Eyebrow>
+          <input style={{...inputStyle}} value={obs} onChange={e=>setObs(e.target.value)}/>
+        </div>
+        <button onClick={salvar} style={{background:"transparent",border:`1px solid ${T.goldDim}`,color:T.gold,cursor:"pointer",
+          fontFamily:DISPLAY,fontSize:10.5,letterSpacing:".14em",textTransform:"uppercase",padding:"9px 14px"}}>Salvar</button>
+      </div>
+      {resultados.length>0 && (
+        <div style={{marginTop:10}}>
+          {resultados.slice(0,4).map(r=>(
+            <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:12,color:T.mute}}>
+              <span>{r.data} · {r.autor}</span>
+              <span style={{color:T.soft}}>{r.resultado}{r.unidade?` ${r.unidade}`:""}{r.obs?` — ${r.obs}`:""}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+} catch(e) {
+  document.getElementById('root').innerHTML = '<pre style="color:#fff;background:#900;padding:16px;font-size:12px;white-space:pre-wrap">ERRO REAL:\n' + (e && e.message) + '\n\n' + (e && e.stack) + '</pre>';
+}
+</script>
+</body>
+</html>
