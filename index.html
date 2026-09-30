@@ -889,7 +889,7 @@ function App(){
       if(!window.firebase){ setDb(null); setDbErrMsg("window.firebase não existe (scripts do CDN não carregaram)"); return; }
       const app = window.firebase.apps && window.firebase.apps.length ? window.firebase.app() : window.firebase.initializeApp(FIREBASE_CONFIG);
       const firestoreDb = window.firebase.firestore(app);
-      firestoreDb.settings({ experimentalForceLongPolling: true, useFetchStreams: false, merge: true });
+      firestoreDb.settings({ experimentalAutoDetectLongPolling: true, useFetchStreams: false, merge: true });
       setDb(firestoreDb);
     }catch(e){ setDb(null); setDbErrMsg((e && e.message) ? e.message : String(e)); }
   },[]);
